@@ -6,7 +6,7 @@ description: |
   assignments and application credentials) into native Kubernetes custom
   resources, driven by oasgen-provider + rest-dynamic-controller.
 type: application
-version: 0.2.0
+version: CHART_VERSION
 appVersion: "0.2.0"
 keywords:
   - krateo
