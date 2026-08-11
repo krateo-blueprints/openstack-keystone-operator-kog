@@ -1,3 +1,12 @@
+---
+type: Runbook
+title: openstack-keystone-operator-kog — quickstart
+description: Install the operator, kubectl apply an IdentityProject, and watch it appear in the Horizon dashboard — end to end from clouds.yaml Secret to a created Keystone project.
+resource: oci://ghcr.io/krateo-blueprints/charts/openstack-keystone-operator-kog
+tags: [krateo, kog, keystone, quickstart, runbook]
+timestamp: 2026-08-11T00:00:00Z
+---
+
 # Quickstart — Keystone (identity) operator
 
 Manage OpenStack **Keystone** identity resources as Kubernetes CRs. End to end:
