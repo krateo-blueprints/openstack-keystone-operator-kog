@@ -24,7 +24,7 @@ the `CompositionDefinition`'s `spec.chart.url` points at.
    git push origin 0.2.0
    ```
 
-The [`release-chart`](../.github/workflows/release-chart.yaml) workflow runs on any tag
+The [`release-chart`](../.github/workflows/release-tag.yaml) workflow runs on any tag
 matching `[0-9]+.[0-9]+.[0-9]+` (or a manual `workflow_dispatch`). It:
 
 1. installs Helm,
