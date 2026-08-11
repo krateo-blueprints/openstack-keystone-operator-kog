@@ -12,5 +12,5 @@ metadata:
   namespace: krateo-system
 spec:
   chart:
-    url: oci://ghcr.io/braghettos/charts/openstack-keystone-operator-kog
+    url: oci://ghcr.io/krateo-blueprints/charts/openstack-keystone-operator-kog
     version: "0.1.0"
