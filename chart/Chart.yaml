@@ -17,9 +17,9 @@ keywords:
   - identity
   - security
   - operator
-home: https://github.com/braghettos/openstack-keystone-operator-kog
+home: https://github.com/krateo-blueprints/openstack-keystone-operator-kog
 sources:
-  - https://github.com/braghettos/openstack-keystone-operator-kog
+  - https://github.com/krateo-blueprints/openstack-keystone-operator-kog
 maintainers:
   - name: braghettos
 icon: https://raw.githubusercontent.com/krateoplatformops/krateo/main/docs/media/logo.svg
