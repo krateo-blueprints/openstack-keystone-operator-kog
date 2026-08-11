@@ -21,7 +21,7 @@ home: https://github.com/krateo-blueprints/openstack-keystone-operator-kog
 sources:
   - https://github.com/krateo-blueprints/openstack-keystone-operator-kog
 maintainers:
-  - name: braghettos
+  - name: krateo
 icon: https://raw.githubusercontent.com/krateoplatformops/krateo/main/docs/media/logo.svg
 annotations:
   krateo.io/category: security
