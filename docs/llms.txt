@@ -1,0 +1,23 @@
+# openstack-keystone-operator-kog — LLM doc index (chart 0.2.0)
+# One line per file. Read files at the tag matching the running build: the chart version
+# is CompositionDefinition.spec.chart.version and equals Chart.yaml version/appVersion.
+docs/index.md: the map — what the blueprint is + links to the whole bundle and the repo layout
+docs/overview.md: architecture — the KOG pipeline (OAS subset → RestDefinition → generated CRD), Identity* naming, the auth-bridge, the OS-FEDERATION set
+docs/usage.md: install (Helm or as a Krateo Composition), the clouds.yaml Secret, the first Identity* CR, federation gotchas
+docs/configuration.md: the whole values surface — per-resource RestDefinition toggles + the auth-bridge config, and the two resources disabled by default
+docs/api.md: the CompositionDefinition CRD, the emitted RestDefinition, and the generated Identity*/Identity*Configuration CRDs
+docs/examples.md: index of the runnable examples + in-chart CR samples
+docs/release.md: how a release ships — a plain-SemVer tag drives the release-chart workflow to push the chart to GHCR
+docs/log.md: curated history
+docs/quickstart.md: install the operator and see a resource appear in Horizon
+examples/composition/README.md: install the KOG operator as a Krateo Composition (auth-bridge + enabled RestDefinitions)
+examples/composition/composition.yaml: the Composition CR (OpenstackKeystoneOperatorKog) pointed at an in-cluster Keystone endpoint
+# Source (read at the same tag; the docs above are derived from these):
+chart/Chart.yaml: chart name/version/appVersion and Krateo annotations
+chart/values.yaml: every value with its rationale in comments
+chart/values.schema.json: the typed values surface Krateo derives the Composition form from
+chart/templates/rd-project.yaml: an example RestDefinition (IdentityProject CRUD verbs)
+chart/templates/rd-role-assignment.yaml: the action-style RestDefinition (findby/PUT/DELETE grant)
+chart/samples/identity-resources.yaml: example Identity* CRs applied after the CRDs exist
+chart/samples/federation.yaml: the full OS-FEDERATION trust as CRs
+compositiondefinition.yaml: this blueprint's registration (spec.chart.url + version)
