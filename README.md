@@ -91,7 +91,7 @@ Guided walk-through with a Horizon screenshot: [docs/quickstart.md](docs/quickst
 
 `helm lint chart` locally (it also validates `values.schema.json`). A plain-SemVer tag
 (`X.Y.Z`, **no** `v` prefix) matching `chart/Chart.yaml` `version` triggers the
-[`release-chart`](.github/workflows/release-chart.yaml) workflow, which packages and pushes
+[`release-chart`](.github/workflows/release-tag.yaml) workflow, which packages and pushes
 the chart to `oci://ghcr.io/krateo-blueprints/charts/openstack-keystone-operator-kog` — the
 artifact the `CompositionDefinition` points at. Release runbook:
 [docs/release.md](docs/release.md).
