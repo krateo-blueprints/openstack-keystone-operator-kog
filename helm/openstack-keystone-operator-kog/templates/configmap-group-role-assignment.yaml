@@ -1,0 +1,11 @@
+{{- if .Values.restdefinitions.group_role_assignment.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ .Release.Name }}-group-role-assignment
+  labels:
+    {{- include "openstack-keystone-operator-kog.labels" . | nindent 4 }}
+data:
+  grouproleassignment.yaml: |
+{{ tpl (.Files.Get "assets/group-role-assignment.yaml") . | indent 4 }}
+{{- end }}

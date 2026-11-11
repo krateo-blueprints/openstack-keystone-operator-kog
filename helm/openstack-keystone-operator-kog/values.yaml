@@ -49,6 +49,12 @@ restdefinitions:
   # All three are PUT-by-client-chosen-id (natural key), so `id` is a user-set
   # spec field. Kinds avoid the envelope-derived Go type (identity_provider ->
   # IdentityProvider, mapping -> Mapping, protocol -> Protocol).
+  group_role_assignment:
+    # One role granted to one GROUP on one project, addressed by names (lookups resolve the ids).
+    # Off by default: it needs an oasgen-provider release carrying #555.
+    enabled: false
+    resourceGroup: identity.openstack.krateo.io
+    resourceKind: IdentityGroupRoleAssignment
   identity_provider:
     enabled: true
     resourceGroup: identity.openstack.krateo.io
