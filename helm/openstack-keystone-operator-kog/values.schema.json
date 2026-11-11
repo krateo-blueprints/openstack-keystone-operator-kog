@@ -216,6 +216,11 @@
           "description": "Name of the Secret holding clouds.yaml (key: clouds.yaml). Created out-of-band with admin credentials.",
           "default": "keystone-clouds"
         },
+        "openrcSecret": {
+          "type": "string",
+          "title": "openrc Secret",
+          "description": "Name of a Secret of OS_* variables (e.g. the OpenStack blueprint's keystone-keystone-admin) in the release namespace. When set it replaces cloudsSecret: the proxy uses openstacksdk's envvars cloud."
+        },
         "osCloud": {
           "type": "string",
           "title": "OS_CLOUD",

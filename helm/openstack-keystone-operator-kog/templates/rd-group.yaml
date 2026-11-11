@@ -9,34 +9,77 @@ spec:
   oasPath: configmap://{{ .Release.Namespace }}/{{ .Release.Name }}-group/group.yaml
   resourceGroup: {{ .Values.restdefinitions.group.resourceGroup }}
   resource:
-    # Keystone wraps the payload in a `group` envelope -> identifiers/status under .group.*
+    # A flat CR (name, domain, description). Keystone's `group` envelope is added on the way out
+    # (requestTransform) and removed on the way in (responseTransform), so it never appears in the
+    # schema: a property named `group` broke crdgen. The domain is a NAME, resolved to its id.
     kind: {{ .Values.restdefinitions.group.resourceKind }}
     identifiers:
-      - group.id
-      - group.name
+      - name
     additionalStatusFields:
-      - group.id
-      - group.domain_id
+      - id
+      - domain_id
+    dependentLookups:
+      - name: domainId
+        method: GET
+        path: /domains
+        parameters:
+          - inQuery: name
+            inCustomResource: spec.domain
+        match:
+          itemsAt: .domains
+          whereField: name
+          equalsFromCustomResource: spec.domain
+          selectField: id
     verbsDescription:
+      - action: findby
+        method: GET
+        path: /groups
+        itemsPath: groups
+        fieldMapping:
+          - inQuery: name
+            inCustomResource: spec.name
+          - inQuery: domain_id
+            resolver:
+              type: dependentLookup
+              dependentLookup:
+                name: domainId
       - action: create
         method: POST
         path: /groups
+        fieldMapping:
+          - inBody: domain_id
+            resolver:
+              type: dependentLookup
+              dependentLookup:
+                name: domainId
+        # spec.domain is a name for the lookup, not a Keystone field: drop it, then wrap.
+        requestTransform:
+          inline: '{group: del(.domain)}'
+        responseTransform:
+          inline: '.group'
       - action: get
         method: GET
         path: /groups/{id}
-        requestFieldMapping:
+        fieldMapping:
           - inPath: id
-            inCustomResource: status.group.id
+            inCustomResource: status.id
+        responseTransform:
+          inline: '.group'
       - action: update
         method: PATCH
         path: /groups/{id}
-        requestFieldMapping:
+        fieldMapping:
           - inPath: id
-            inCustomResource: status.group.id
+            inCustomResource: status.id
+        # Keystone refuses to move a group to another domain: never send the domain on update.
+        requestTransform:
+          inline: '{group: del(.domain, .domain_id)}'
+        responseTransform:
+          inline: '.group'
       - action: delete
         method: DELETE
         path: /groups/{id}
-        requestFieldMapping:
+        fieldMapping:
           - inPath: id
-            inCustomResource: status.group.id
+            inCustomResource: status.id
 {{- end }}

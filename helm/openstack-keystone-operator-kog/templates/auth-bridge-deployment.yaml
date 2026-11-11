@@ -26,9 +26,19 @@ spec:
           image: "{{ .Values.authBridge.image.repository }}:{{ .Values.authBridge.image.tag }}"
           imagePullPolicy: {{ .Values.authBridge.image.pullPolicy }}
           command: ["python3", "/app/openstack-auth-proxy.py"]
+          {{- with .Values.authBridge.openrcSecret }}
+          envFrom:
+            - secretRef:
+                name: {{ . }}
+          {{- end }}
           env:
+            {{- if .Values.authBridge.openrcSecret }}
+            # openstacksdk's built-in cloud that reads the OS_* variables loaded above.
+            - { name: OS_CLOUD, value: envvars }
+            {{- else }}
             - { name: OS_CLOUD, value: {{ .Values.authBridge.osCloud | quote }} }
             - { name: OS_CLIENT_CONFIG_FILE, value: /etc/openstack/clouds.yaml }
+            {{- end }}
             - { name: SERVICE_TYPE, value: {{ .Values.authBridge.serviceType | quote }} }
             - { name: OS_INTERFACE, value: {{ .Values.authBridge.osInterface | quote }} }
             - { name: UPSTREAM_ENDPOINT, value: {{ .Values.authBridge.upstreamEndpoint | quote }} }
@@ -46,14 +56,18 @@ spec:
             {{- toYaml .Values.authBridge.resources | nindent 12 }}
           volumeMounts:
             - { name: script, mountPath: /app }
+            {{- if not .Values.authBridge.openrcSecret }}
             - { name: clouds, mountPath: /etc/openstack, readOnly: true }
+            {{- end }}
       volumes:
         - name: script
           configMap:
             name: {{ include "openstack-keystone-operator-kog.authBridgeName" . }}
+        {{- if not .Values.authBridge.openrcSecret }}
         - name: clouds
           secret:
             secretName: {{ .Values.authBridge.cloudsSecret }}
+        {{- end }}
       {{- with .Values.authBridge.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}

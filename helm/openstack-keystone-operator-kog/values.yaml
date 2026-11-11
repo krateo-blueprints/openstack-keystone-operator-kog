@@ -81,6 +81,11 @@ authBridge:
   replicaCount: 1
   # Secret holding clouds.yaml (key: clouds.yaml). Created out-of-band.
   cloudsSecret: keystone-clouds
+  # OR: a Secret of OS_* variables (an OpenStack-Helm "openrc" Secret, e.g. keystone-keystone-admin
+  # created by the OpenStack blueprint's Keystone), in this release's namespace. When set it is used
+  # instead of cloudsSecret: the proxy reads it as environment through openstacksdk's built-in
+  # `envvars` cloud, so no clouds.yaml has to be written by hand. osInterface still applies.
+  openrcSecret: ""
   # Cloud name inside clouds.yaml.
   osCloud: openstack
   # Catalog service type to proxy and the interface to discover.
