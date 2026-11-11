@@ -107,6 +107,8 @@ spec:
     - action: create
       method: PUT
       path: /projects/{project_id}/groups/{group_id}/roles/{role_id}
+      # '{}' is NOT interchangeable with '[]': the controller declines to send an empty MAP, but an
+      # empty ARRAY is sent (it is a valid no-op JSON Patch). Keep '{}' so PUT/DELETE carry no body.
       requestTransform:
         inline: '{}'
       fieldMapping:
@@ -128,6 +130,8 @@ spec:
     - action: delete
       method: DELETE
       path: /projects/{project_id}/groups/{group_id}/roles/{role_id}
+      # '{}' is NOT interchangeable with '[]': the controller declines to send an empty MAP, but an
+      # empty ARRAY is sent (it is a valid no-op JSON Patch). Keep '{}' so PUT/DELETE carry no body.
       requestTransform:
         inline: '{}'
       fieldMapping:
