@@ -1,0 +1,192 @@
+openapi: 3.0.3
+info:
+  title: OpenStack Identity (Keystone) v3 - Group Role Assignments (KOG-friendly subset)
+  description: |
+    Grant/revoke a role to a GROUP on a project, addressed by NAMES. Keystone addresses all three
+    by server ids, so the RestDefinition's dependentLookups resolve them from the names in the
+    custom resource (domains first, then the project and group inside their domains, then the role).
+    get = Keystone's check endpoint (204 granted / 404 not); PUT grants, DELETE revokes (both 204).
+    Neither PUT nor DELETE takes a body: the request body below is the custom resource's shape
+    (it is what oasgen builds the spec from), and the RestDefinition's requestTransform reduces it
+    to {}, which the controller does not send. The CRD Kind is `IdentityGroupRoleAssignment`.
+    Paths are relative to the identity endpoint base (.../v3).
+  version: "3.0"
+servers:
+  - url: {{ include "openstack-keystone-operator-kog.authBridgeUrl" . }}
+    description: In-cluster Keystone-auth proxy
+security:
+  - bearer: []
+components:
+  securitySchemes:
+    bearer:
+      type: http
+      scheme: bearer
+  schemas:
+    GroupRoleAssignment:
+      type: object
+      required:
+        - project
+        - projectDomain
+        - group
+        - groupDomain
+        - role
+      properties:
+        project:
+          type: string
+          description: Project name.
+        projectDomain:
+          type: string
+          description: Name of the project's domain.
+        group:
+          type: string
+          description: Group name.
+        groupDomain:
+          type: string
+          description: Name of the group's domain.
+        role:
+          type: string
+          description: Role name, e.g. reader, member, admin.
+    Named:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        domain_id:
+          type: string
+paths:
+  /projects/{project_id}/groups/{group_id}/roles/{role_id}:
+    parameters:
+      - name: project_id
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: group_id
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: role_id
+        in: path
+        required: true
+        schema:
+          type: string
+    get:
+      summary: Check whether the group holds the role on the project
+      responses:
+        "204":
+          description: Granted.
+        "404":
+          description: Not granted.
+    put:
+      summary: Grant the role to the group on the project
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GroupRoleAssignment"
+      responses:
+        "204":
+          description: Granted.
+    delete:
+      summary: Revoke the role from the group on the project
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GroupRoleAssignment"
+      responses:
+        "204":
+          description: Revoked.
+  /domains:
+    get:
+      summary: List domains (lookup only)
+      parameters:
+        - name: name
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Domains.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  domains:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Named"
+  /projects:
+    get:
+      summary: List projects (lookup only)
+      parameters:
+        - name: name
+          in: query
+          schema:
+            type: string
+        - name: domain_id
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Projects.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  projects:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Named"
+  /groups:
+    get:
+      summary: List groups (lookup only)
+      parameters:
+        - name: name
+          in: query
+          schema:
+            type: string
+        - name: domain_id
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Groups.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  groups:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Named"
+  /roles:
+    get:
+      summary: List roles (lookup only)
+      parameters:
+        - name: name
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Roles.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  roles:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Named"

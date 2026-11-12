@@ -1,0 +1,153 @@
+{{- if .Values.restdefinitions.group_role_assignment.enabled }}
+apiVersion: ogen.krateo.io/v1alpha1
+kind: RestDefinition
+metadata:
+  name: {{ .Release.Name }}-group-role-assignment
+  labels:
+    {{- include "openstack-keystone-operator-kog.labels" . | nindent 4 }}
+spec:
+  oasPath: configmap://{{ .Release.Namespace }}/{{ .Release.Name }}-group-role-assignment/grouproleassignment.yaml
+  resourceGroup: {{ .Values.restdefinitions.group_role_assignment.resourceGroup }}
+  resource:
+    # One role granted to one GROUP on one project, all addressed by NAME. Keystone uses server ids,
+    # so dependentLookups resolve them: each domain by name, the project and group by name inside
+    # their domain, the role by name.
+    #   get    = Keystone's check endpoint: 204 granted (no body: up to date), 404 not granted.
+    #   create = PUT (grant), delete = DELETE (revoke). Neither takes a body: requestTransform
+    #            reduces the CR-shaped body to {}, which the controller does not send.
+    # REQUIRES oasgen-provider with #555: the three path ids are supplied by lookups, and before
+    # #555 the generator still makes them required spec fields.
+    kind: {{ .Values.restdefinitions.group_role_assignment.resourceKind }}
+    identifiers:
+    - project
+    - projectDomain
+    - group
+    - groupDomain
+    - role
+    dependentLookups:
+    - name: projectDomainId
+      method: GET
+      path: /domains
+      parameters:
+      - inQuery: name
+        inCustomResource: spec.projectDomain
+      match:
+        itemsAt: .domains
+        whereField: name
+        equalsFromCustomResource: spec.projectDomain
+        selectField: id
+    - name: groupDomainId
+      method: GET
+      path: /domains
+      parameters:
+      - inQuery: name
+        inCustomResource: spec.groupDomain
+      match:
+        itemsAt: .domains
+        whereField: name
+        equalsFromCustomResource: spec.groupDomain
+        selectField: id
+    - name: projectId
+      method: GET
+      path: /projects
+      parameters:
+      - inQuery: name
+        inCustomResource: spec.project
+      - inQuery: domain_id
+        fromLookup: projectDomainId
+      match:
+        itemsAt: .projects
+        whereField: name
+        equalsFromCustomResource: spec.project
+        selectField: id
+    - name: groupId
+      method: GET
+      path: /groups
+      parameters:
+      - inQuery: name
+        inCustomResource: spec.group
+      - inQuery: domain_id
+        fromLookup: groupDomainId
+      match:
+        itemsAt: .groups
+        whereField: name
+        equalsFromCustomResource: spec.group
+        selectField: id
+    - name: roleId
+      method: GET
+      path: /roles
+      parameters:
+      - inQuery: name
+        inCustomResource: spec.role
+      match:
+        itemsAt: .roles
+        whereField: name
+        equalsFromCustomResource: spec.role
+        selectField: id
+    verbsDescription:
+    - action: get
+      method: GET
+      path: /projects/{project_id}/groups/{group_id}/roles/{role_id}
+      fieldMapping:
+      - inPath: project_id
+        resolver:
+          type: dependentLookup
+          dependentLookup:
+            name: projectId
+      - inPath: group_id
+        resolver:
+          type: dependentLookup
+          dependentLookup:
+            name: groupId
+      - inPath: role_id
+        resolver:
+          type: dependentLookup
+          dependentLookup:
+            name: roleId
+    - action: create
+      method: PUT
+      path: /projects/{project_id}/groups/{group_id}/roles/{role_id}
+      # '{}' is NOT interchangeable with '[]': the controller declines to send an empty MAP, but an
+      # empty ARRAY is sent (it is a valid no-op JSON Patch). Keep '{}' so PUT/DELETE carry no body.
+      requestTransform:
+        inline: '{}'
+      fieldMapping:
+      - inPath: project_id
+        resolver:
+          type: dependentLookup
+          dependentLookup:
+            name: projectId
+      - inPath: group_id
+        resolver:
+          type: dependentLookup
+          dependentLookup:
+            name: groupId
+      - inPath: role_id
+        resolver:
+          type: dependentLookup
+          dependentLookup:
+            name: roleId
+    - action: delete
+      method: DELETE
+      path: /projects/{project_id}/groups/{group_id}/roles/{role_id}
+      # '{}' is NOT interchangeable with '[]': the controller declines to send an empty MAP, but an
+      # empty ARRAY is sent (it is a valid no-op JSON Patch). Keep '{}' so PUT/DELETE carry no body.
+      requestTransform:
+        inline: '{}'
+      fieldMapping:
+      - inPath: project_id
+        resolver:
+          type: dependentLookup
+          dependentLookup:
+            name: projectId
+      - inPath: group_id
+        resolver:
+          type: dependentLookup
+          dependentLookup:
+            name: groupId
+      - inPath: role_id
+        resolver:
+          type: dependentLookup
+          dependentLookup:
+            name: roleId
+{{- end }}

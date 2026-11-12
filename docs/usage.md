@@ -98,9 +98,12 @@ the samples encode:
   and returns **409** if the object exists; the `update` verb maps to `PATCH`.
 - **No `domain` in the mapping's `projects` local rule** — Keystone rejects it; the
   project domain is inferred from the `user` rule.
-- **Pin the IdP's `domain_id`** to your managed domain, or Keystone auto-creates a per-IdP
+- **Pin the IdP's domain** to your managed domain, or Keystone auto-creates a per-IdP
   domain and auto-provisioned projects land there, orphaned. Pinning it makes
-  auto-provisioning **reuse** the managed project (matched by name in that domain).
+  auto-provisioning **reuse** the managed project (matched by name in that domain). Since
+  0.4.0 give it by name, `spec.identity_provider.domain: keycloak`, and the controller
+  resolves the id at create; an explicit `domain_id` still wins. `IdentityProject` takes
+  `spec.project.domain` the same way.
 - Recreating an IdP with the same id needs stale **shadow-user cleanup** in the federation
   domain (otherwise re-login hits `409 store federated_user - Duplicate`).
 
@@ -117,3 +120,20 @@ kubectl -n krateo-system apply -f chart/samples/federation.yaml
 - An `IdentityApplicationCredential` is the production answer to the expiring-token problem
   the other KOG operators (nova/ironic) hit: mint one here, then point their
   proxies/`clouds.yaml` at it.
+
+## Credentials from the OpenStack blueprint (openrcSecret)
+
+The OpenStack blueprint's Keystone writes its admin credentials as an OpenStack-Helm "openrc"
+Secret (`keystone-keystone-admin`, keys `OS_AUTH_URL`, `OS_USERNAME`, `OS_PASSWORD`, ...). Point the
+auth proxy at it instead of writing a `clouds.yaml`:
+
+```yaml
+authBridge:
+  openrcSecret: keystone-keystone-admin   # in this release's namespace
+  upstreamEndpoint: http://keystone-api.openstack.svc.cluster.local:5000/v3
+```
+
+The proxy then reads the Secret as environment through openstacksdk's `envvars` cloud. Install the
+chart in the Secret's namespace (`openstack`). Use the internal `keystone-api` endpoint: the public
+`keystone` Service has no backend without an ingress controller.
+

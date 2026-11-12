@@ -17,30 +17,58 @@ spec:
       - id
     additionalStatusFields:
       - identity_provider.id
+    # spec.identity_provider.domain (a NAME) -> the domain's id, for the create body. Skipped when the CR
+    # gives domain_id itself, so an explicit id wins and costs no call.
+    dependentLookups:
+      - name: domainId
+        method: GET
+        path: /domains
+        when:
+          customResourceFieldAbsent: spec.identity_provider.domain_id
+        parameters:
+          - inQuery: name
+            inCustomResource: spec.identity_provider.domain
+        match:
+          itemsAt: .domains
+          whereField: name
+          equalsFromCustomResource: spec.identity_provider.domain
+          selectField: id
     verbsDescription:
       - action: create
         method: PUT
         path: /OS-FEDERATION/identity_providers/{id}
-        requestFieldMapping:
+        fieldMapping:
           - inPath: id
             inCustomResource: spec.id
+          - inBody: identity_provider.domain_id
+            resolver:
+              type: dependentLookup
+              when:
+                customResourceFieldPresent: spec.identity_provider.domain
+              dependentLookup:
+                name: domainId
+        # `domain` is the lookup's input, not a Keystone field: never send it.
+        requestTransform:
+          inline: '.identity_provider |= del(.domain)'
       - action: get
         method: GET
         path: /OS-FEDERATION/identity_providers/{id}
-        requestFieldMapping:
+        fieldMapping:
           - inPath: id
             inCustomResource: spec.id
       - action: update
         # Keystone: PUT is create-only (409 if exists); update uses PATCH.
         method: PATCH
         path: /OS-FEDERATION/identity_providers/{id}
-        requestFieldMapping:
+        fieldMapping:
           - inPath: id
             inCustomResource: spec.id
+        requestTransform:
+          inline: '.identity_provider |= del(.domain)'
       - action: delete
         method: DELETE
         path: /OS-FEDERATION/identity_providers/{id}
-        requestFieldMapping:
+        fieldMapping:
           - inPath: id
             inCustomResource: spec.id
 {{- end }}

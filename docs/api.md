@@ -84,3 +84,25 @@ the object exists).
 Kinds and their Keystone endpoints are listed in [overview.md](overview.md#the-resource-set).
 For the per-field request shapes, read the OAS subsets in `chart/assets/` (e.g.
 `chart/assets/project.yaml`).
+
+## `IdentityGroup` and `IdentityGroupRoleAssignment` (0.3.0)
+
+`IdentityGroup` is a flat resource: `spec.name`, `spec.domain` (a domain **name**, resolved to its
+id by a lookup) and `spec.description`. Keystone's `{"group": {...}}` envelope is added by the
+RestDefinition's `requestTransform` and removed by its `responseTransform`, so it is never part of
+the schema. `status.id` and `status.domain_id` are Keystone's. An update never sends the domain:
+Keystone refuses to move a group between domains.
+
+`IdentityGroupRoleAssignment` grants one role to one group on one project, all addressed by name
+(`project`, `projectDomain`, `group`, `groupDomain`, `role`); lookups resolve the ids into the path
+of Keystone's check (`GET`, 204/404), grant (`PUT`) and revoke (`DELETE`). Changing any field is a
+different assignment: delete the resource and create a new one.
+
+Both need oasgen-provider >= 0.58.0, where a path or query parameter supplied by a lookup is no
+longer a required spec field (#555).
+
+Measured on GKE against Keystone 2026.1 (`quay.io/airshipit/keystone:2026.1-ubuntu_noble`, OpenStack blueprint 0.3.47), oasgen-provider 0.59.0: a
+group created in `Default` by name, a role granted to it on a project (check 204), a description
+update applied with exactly one PATCH and no further writes over 200 s, revoke (check 404), and
+deletion of the group and project.
+
