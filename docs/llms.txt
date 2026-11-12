@@ -13,11 +13,11 @@ docs/quickstart.md: install the operator and see a resource appear in Horizon
 examples/composition/README.md: install the KOG operator as a Krateo Composition (auth-bridge + enabled RestDefinitions)
 examples/composition/composition.yaml: the Composition CR (OpenstackKeystoneOperatorKog) pointed at an in-cluster Keystone endpoint
 # Source (read at the same tag; the docs above are derived from these):
-chart/Chart.yaml: chart name/version/appVersion and Krateo annotations
-chart/values.yaml: every value with its rationale in comments
-chart/values.schema.json: the typed values surface Krateo derives the Composition form from
-chart/templates/rd-project.yaml: an example RestDefinition (IdentityProject CRUD verbs)
-chart/templates/rd-role-assignment.yaml: the action-style RestDefinition (findby/PUT/DELETE grant)
-chart/samples/identity-resources.yaml: example Identity* CRs applied after the CRDs exist
-chart/samples/federation.yaml: the full OS-FEDERATION trust as CRs
+helm/openstack-keystone-operator-kog/Chart.yaml: chart name/version/appVersion and Krateo annotations
+helm/openstack-keystone-operator-kog/values.yaml: every value with its rationale in comments
+helm/openstack-keystone-operator-kog/values.schema.json: the typed values surface Krateo derives the Composition form from
+helm/openstack-keystone-operator-kog/templates/rd-project.yaml: an example RestDefinition (IdentityProject CRUD verbs)
+helm/openstack-keystone-operator-kog/templates/rd-role-assignment.yaml: the action-style RestDefinition (findby/PUT/DELETE grant)
+helm/openstack-keystone-operator-kog/samples/identity-resources.yaml: example Identity* CRs applied after the CRDs exist
+helm/openstack-keystone-operator-kog/samples/federation.yaml: the full OS-FEDERATION trust as CRs
 compositiondefinition.yaml: this blueprint's registration (spec.chart.url + version)

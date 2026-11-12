@@ -32,7 +32,8 @@ Defaults per resource:
 | `role` | `IdentityRole` | `true` |
 | `domain` | `IdentityDomain` | `true` |
 | `role_assignment` | `IdentityRoleAssignment` | `true` |
-| `group` | `IdentityGroup` | `false` |
+| `group` | `IdentityGroup` | `true` |
+| `group_role_assignment` | `IdentityGroupRoleAssignment` | `true` |
 | `application_credential` | `IdentityApplicationCredential` | `false` |
 | `identity_provider` | `IdentityFederationProvider` | `true` |
 | `mapping` | `IdentityMapping` | `true` |
@@ -52,11 +53,8 @@ restdefinitions:
 
 ### Disabled-by-default resources
 
-- **`group` (`IdentityGroup`) — off.** crdgen currently emits an undefined Go type `Group`
-  for the `group` envelope property and fails CRD generation (`unknown type Group`),
-  whether the schema is `$ref`'d or inlined — the literal property name `group` is the
-  trigger. Needs an upstream crdgen fix; the OAS and `RestDefinition` ship ready to enable
-  once that lands.
+`IdentityGroup` was here until 0.3.0: it is now modelled flat (see [api](api.md)) and on by default.
+
 - **`application_credential` (`IdentityApplicationCredential`) — off.** Create is
   `POST /v3/users/{user_id}/application_credentials` with a body of strictly
   `{application_credential:{…}}`, but KOG sends the whole spec, so the path-only `user_id`
@@ -69,7 +67,9 @@ restdefinitions:
 
 The auth-bridge is a stateless Keystone-auth reverse proxy (openstacksdk). The generated
 controller's plain-HTTP calls go here; the proxy injects a fresh `X-Auth-Token` and
-forwards to the discovered `identity` endpoint. `authBridge` is **required** by the schema.
+forwards to the discovered `identity` endpoint. Every key below has a default, so the schema
+requires none of them: a Composition may omit `authBridge` entirely (see the 0.3.0 note in
+[log](log.md)).
 
 | Key | Type | Default | Effect |
 |---|---|---|---|

@@ -18,12 +18,10 @@ restdefinitions:
     resourceGroup: identity.openstack.krateo.io
     resourceKind: IdentityRole
   group:
-    # Disabled by default: crdgen currently emits an undefined Go type `Group`
-    # for the `group` envelope property and fails CRD generation ("unknown type
-    # Group"), whether the schema is $ref'd or inlined - the literal property
-    # name `group` is the trigger. Needs an upstream crdgen fix; the OAS/RD are
-    # shipped ready to enable once that lands.
-    enabled: false
+    # A flat CR (name, domain by NAME, description). Keystone's `group` envelope is added and
+    # removed by the RestDefinition's request/responseTransform, so it is never a schema property:
+    # modelling it as one made crdgen fail ("unknown type Group"). Requires oasgen-provider >= 0.58.0.
+    enabled: true
     resourceGroup: identity.openstack.krateo.io
     resourceKind: IdentityGroup
   domain:
@@ -49,6 +47,12 @@ restdefinitions:
   # All three are PUT-by-client-chosen-id (natural key), so `id` is a user-set
   # spec field. Kinds avoid the envelope-derived Go type (identity_provider ->
   # IdentityProvider, mapping -> Mapping, protocol -> Protocol).
+  group_role_assignment:
+    # One role granted to one GROUP on one project, addressed by names (lookups resolve the ids).
+    # Requires oasgen-provider >= 0.58.0 (#555: lookup-supplied path ids are not spec fields).
+    enabled: true
+    resourceGroup: identity.openstack.krateo.io
+    resourceKind: IdentityGroupRoleAssignment
   identity_provider:
     enabled: true
     resourceGroup: identity.openstack.krateo.io
@@ -75,6 +79,11 @@ authBridge:
   replicaCount: 1
   # Secret holding clouds.yaml (key: clouds.yaml). Created out-of-band.
   cloudsSecret: keystone-clouds
+  # OR: a Secret of OS_* variables (an OpenStack-Helm "openrc" Secret, e.g. keystone-keystone-admin
+  # created by the OpenStack blueprint's Keystone), in this release's namespace. When set it is used
+  # instead of cloudsSecret: the proxy reads it as environment through openstacksdk's built-in
+  # `envvars` cloud, so no clouds.yaml has to be written by hand. osInterface still applies.
+  openrcSecret: ""
   # Cloud name inside clouds.yaml.
   osCloud: openstack
   # Catalog service type to proxy and the interface to discover.

@@ -2,11 +2,17 @@ openapi: 3.0.3
 info:
   title: OpenStack Identity (Keystone) v3 - Groups (KOG-friendly subset)
   description: |
-    Hand-crafted OpenAPI 3.0 subset of the Keystone v3 Identity API covering the
-    Group lifecycle (create / get / update / delete). Keystone wraps the payload
-    in a `group` envelope, so the CR uses `spec.group.*`; the CRD Kind is
-    `IdentityGroup`. The envelope schemas are inlined (not $ref'd) so crdgen
-    derives the nested types directly. Paths are relative to the identity base (.../v3).
+    Hand-crafted OpenAPI 3.0 subset of the Keystone v3 Identity API covering the Group lifecycle
+    (create / get / update / delete). The CRD Kind is `IdentityGroup`.
+
+    The custom resource is FLAT (spec.name, spec.domain, spec.description). Keystone wraps the
+    payload in a `group` envelope; the RestDefinition adds it with a requestTransform and removes it
+    with a responseTransform. Modelling the envelope itself as a property named `group` made crdgen
+    emit an undefined Go type `Group` and fail generation, so the envelope is never part of the
+    schema. The schemas below describe the shapes AFTER those transforms.
+
+    The domain is addressed by NAME (spec.domain); a dependentLookup resolves its id into the
+    request body's domain_id. Paths are relative to the identity base (.../v3).
   version: "3.0"
 servers:
   - url: {{ include "openstack-keystone-operator-kog.authBridgeUrl" . }}
@@ -16,49 +22,86 @@ components:
     bearer:
       type: http
       scheme: bearer
+  schemas:
+    GroupSpec:
+      type: object
+      required:
+        - name
+        - domain
+      properties:
+        name:
+          type: string
+          description: Group name, unique within its domain.
+        domain:
+          type: string
+          description: Name of the group's domain (resolved to its id).
+        description:
+          type: string
+    Group:
+      type: object
+      properties:
+        id:
+          type: string
+          description: Server-generated id (read-only).
+        name:
+          type: string
+        domain_id:
+          type: string
+        description:
+          type: string
+    GroupList:
+      type: object
+      properties:
+        groups:
+          type: array
+          items:
+            $ref: '#/components/schemas/Group'
+    Named:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
 security:
   - bearer: []
 paths:
   /groups:
+    get:
+      operationId: listGroups
+      summary: List groups (filtered by name and domain)
+      parameters:
+        - name: name
+          in: query
+          schema:
+            type: string
+        - name: domain_id
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Groups.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GroupList'
     post:
       operationId: createGroup
       summary: Create a group
-      tags: [groups]
-      security:
-        - bearer: []
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              type: object
-              required: [group]
-              properties:
-                group:
-                  type: object
-                  required: [name]
-                  properties:
-                    name:
-                      type: string
-                    domain_id:
-                      type: string
-                    description:
-                      type: string
+              $ref: '#/components/schemas/GroupSpec'
       responses:
-        '201':
-          description: Created
+        "201":
+          description: Created (after responseTransform, the group itself).
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  group:
-                    type: object
-                    properties:
-                      id: { type: string }
-                      name: { type: string }
-                      domain_id: { type: string }
-                      description: { type: string }
+                $ref: '#/components/schemas/Group'
   /groups/{id}:
     parameters:
       - name: id
@@ -68,63 +111,54 @@ paths:
           type: string
     get:
       operationId: getGroup
-      summary: Show group details
-      tags: [groups]
-      security:
-        - bearer: []
+      summary: Show a group
       responses:
-        '200':
-          description: OK
+        "200":
+          description: The group (after responseTransform).
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  group:
-                    type: object
-                    properties:
-                      id: { type: string }
-                      name: { type: string }
-                      domain_id: { type: string }
-                      description: { type: string }
+                $ref: '#/components/schemas/Group'
     patch:
       operationId: updateGroup
       summary: Update a group
-      tags: [groups]
-      security:
-        - bearer: []
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              type: object
-              required: [group]
-              properties:
-                group:
-                  type: object
-                  properties:
-                    name: { type: string }
-                    description: { type: string }
+              $ref: '#/components/schemas/GroupSpec'
       responses:
-        '200':
-          description: OK
+        "200":
+          description: Updated (after responseTransform, the group itself).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Group'
+    delete:
+      operationId: deleteGroup
+      summary: Delete a group
+      responses:
+        "204":
+          description: Deleted.
+  /domains:
+    get:
+      operationId: listDomains
+      summary: List domains (for the name -> id lookup)
+      parameters:
+        - name: name
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Domains.
           content:
             application/json:
               schema:
                 type: object
                 properties:
-                  group:
-                    type: object
-                    properties:
-                      id: { type: string }
-                      name: { type: string }
-    delete:
-      operationId: deleteGroup
-      summary: Delete a group
-      tags: [groups]
-      security:
-        - bearer: []
-      responses:
-        '204':
-          description: Deleted
+                  domains:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Named'
