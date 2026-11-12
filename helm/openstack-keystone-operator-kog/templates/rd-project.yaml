@@ -17,26 +17,55 @@ spec:
     additionalStatusFields:
       - project.id
       - project.domain_id
+    # spec.project.domain (a NAME) -> the domain's id, for the create body. Skipped when the CR gives
+    # domain_id itself, so an explicit id wins and costs no call.
+    dependentLookups:
+      - name: domainId
+        method: GET
+        path: /domains
+        when:
+          customResourceFieldAbsent: spec.project.domain_id
+        parameters:
+          - inQuery: name
+            inCustomResource: spec.project.domain
+        match:
+          itemsAt: .domains
+          whereField: name
+          equalsFromCustomResource: spec.project.domain
+          selectField: id
     verbsDescription:
       - action: create
         method: POST
         path: /projects
+        fieldMapping:
+          - inBody: project.domain_id
+            resolver:
+              type: dependentLookup
+              when:
+                customResourceFieldPresent: spec.project.domain
+              dependentLookup:
+                name: domainId
+        # `domain` is the lookup's input, not a Keystone field: never send it.
+        requestTransform:
+          inline: '.project |= del(.domain)'
       - action: get
         method: GET
         path: /projects/{id}
-        requestFieldMapping:
+        fieldMapping:
           - inPath: id
             inCustomResource: status.project.id
       - action: update
         method: PATCH
         path: /projects/{id}
-        requestFieldMapping:
+        fieldMapping:
           - inPath: id
             inCustomResource: status.project.id
+        requestTransform:
+          inline: '.project |= del(.domain)'
       - action: delete
         method: DELETE
         path: /projects/{id}
-        requestFieldMapping:
+        fieldMapping:
           - inPath: id
             inCustomResource: status.project.id
 {{- end }}

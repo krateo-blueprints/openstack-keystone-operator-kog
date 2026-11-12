@@ -98,9 +98,12 @@ the samples encode:
   and returns **409** if the object exists; the `update` verb maps to `PATCH`.
 - **No `domain` in the mapping's `projects` local rule** — Keystone rejects it; the
   project domain is inferred from the `user` rule.
-- **Pin the IdP's `domain_id`** to your managed domain, or Keystone auto-creates a per-IdP
+- **Pin the IdP's domain** to your managed domain, or Keystone auto-creates a per-IdP
   domain and auto-provisioned projects land there, orphaned. Pinning it makes
-  auto-provisioning **reuse** the managed project (matched by name in that domain).
+  auto-provisioning **reuse** the managed project (matched by name in that domain). Since
+  0.4.0 give it by name, `spec.identity_provider.domain: keycloak`, and the controller
+  resolves the id at create; an explicit `domain_id` still wins. `IdentityProject` takes
+  `spec.project.domain` the same way.
 - Recreating an IdP with the same id needs stale **shadow-user cleanup** in the federation
   domain (otherwise re-login hits `409 store federated_user - Duplicate`).
 
