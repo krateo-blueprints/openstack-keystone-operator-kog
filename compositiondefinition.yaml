@@ -1,10 +1,7 @@
-# CompositionDefinition: registers this KOG chart as an installable Krateo
-# Composition. The metadata.name is the marketplace join key and must match the
-# chart name in chart/Chart.yaml.
-#
-# NOTE (blocker): the chart at spec.chart.url is not published yet. This repo has
-# no release CI to push the chart to the charts/ OCI namespace, so the url below
-# will only resolve once such a workflow exists.
+# CompositionDefinition: registers this KOG chart as an installable Krateo Composition. The
+# metadata.name is the Marketplace join key and must match the chart name in
+# helm/openstack-keystone-operator-kog/Chart.yaml. CHART_VERSION is stamped from the release tag,
+# and the release workflow also ships this file inside the chart archive.
 apiVersion: core.krateo.io/v1alpha1
 kind: CompositionDefinition
 metadata:
