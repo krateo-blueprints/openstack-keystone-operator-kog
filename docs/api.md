@@ -101,7 +101,7 @@ different assignment: delete the resource and create a new one.
 Both need oasgen-provider >= 0.58.0, where a path or query parameter supplied by a lookup is no
 longer a required spec field (#555).
 
-Measured on GKE against Keystone 2025.1 (OpenStack blueprint 0.3.47), oasgen-provider 0.59.0: a
+Measured on GKE against Keystone 2026.1 (`quay.io/airshipit/keystone:2026.1-ubuntu_noble`, OpenStack blueprint 0.3.47), oasgen-provider 0.59.0: a
 group created in `Default` by name, a role granted to it on a project (check 204), a description
 update applied with exactly one PATCH and no further writes over 200 s, revoke (check 404), and
 deletion of the group and project.
