@@ -7,7 +7,9 @@ description: |
   resources, driven by oasgen-provider + rest-dynamic-controller.
 type: application
 version: CHART_VERSION
-appVersion: "0.2.0"
+# The Keystone release this chart is validated against (OpenStack-Helm keystone 2025.1), not the
+# chart version: the chart version comes from the git tag.
+appVersion: "2025.1"
 keywords:
   - krateo
   - kog

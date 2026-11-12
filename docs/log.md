@@ -12,6 +12,14 @@ timestamp: 2026-08-11T00:00:00Z
 Curated history; release notes live in GitHub Releases.
 
 
+## 2026-11-12 — 0.3.1: listed on the Marketplace
+
+No chart change. The repo now uses the org's canonical release workflow: a tag is refused unless
+the tagged commit passed `lint.yaml` (which now also runs on every push to `main`), and the chart
+goes to the Marketplace blueprints index as well as GHCR, with the stamped CompositionDefinition
+inside the archive. 0.3.0 was published to GHCR only. `appVersion` is now the Keystone release the
+chart is validated against (`2025.1`); it had been left at `0.2.0`. See [release](release.md).
+
 ## 2026-11-12 — 0.3.0: groups and group role assignments; credentials from the blueprint
 
 `IdentityGroup` is on by default, modelled flat with the envelope handled by request/response
