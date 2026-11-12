@@ -12,6 +12,12 @@ timestamp: 2026-08-11T00:00:00Z
 Curated history; release notes live in GitHub Releases.
 
 
+## 2026-11-12 — 0.3.2: appVersion corrected to 2026.1
+
+No chart change. 0.3.1 set `appVersion` to `2025.1`, which is wrong: the validation ran the OpenStack
+blueprint 0.3.47's default `keystone_api` image, `quay.io/airshipit/keystone:2026.1-ubuntu_noble`.
+`2025.1` is the tag of the separate OIDC-enabled image (`keystone-oidc`), which that run did not use.
+
 ## 2026-11-12 — 0.3.1: listed on the Marketplace
 
 No chart change. The repo now uses the org's canonical release workflow: a tag is refused unless
