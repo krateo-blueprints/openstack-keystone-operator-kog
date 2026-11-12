@@ -18,12 +18,10 @@ restdefinitions:
     resourceGroup: identity.openstack.krateo.io
     resourceKind: IdentityRole
   group:
-    # Disabled by default: crdgen currently emits an undefined Go type `Group`
-    # for the `group` envelope property and fails CRD generation ("unknown type
-    # Group"), whether the schema is $ref'd or inlined - the literal property
-    # name `group` is the trigger. Needs an upstream crdgen fix; the OAS/RD are
-    # shipped ready to enable once that lands.
-    enabled: false
+    # A flat CR (name, domain by NAME, description). Keystone's `group` envelope is added and
+    # removed by the RestDefinition's request/responseTransform, so it is never a schema property:
+    # modelling it as one made crdgen fail ("unknown type Group"). Requires oasgen-provider >= 0.58.0.
+    enabled: true
     resourceGroup: identity.openstack.krateo.io
     resourceKind: IdentityGroup
   domain:
@@ -51,8 +49,8 @@ restdefinitions:
   # IdentityProvider, mapping -> Mapping, protocol -> Protocol).
   group_role_assignment:
     # One role granted to one GROUP on one project, addressed by names (lookups resolve the ids).
-    # Off by default: it needs an oasgen-provider release carrying #555.
-    enabled: false
+    # Requires oasgen-provider >= 0.58.0 (#555: lookup-supplied path ids are not spec fields).
+    enabled: true
     resourceGroup: identity.openstack.krateo.io
     resourceKind: IdentityGroupRoleAssignment
   identity_provider:

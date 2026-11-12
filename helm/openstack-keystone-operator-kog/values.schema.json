@@ -3,9 +3,6 @@
   "type": "object",
   "title": "OpenStack Keystone KOG",
   "description": "Krateo Operator Generator (KOG) packaging that turns OpenStack Keystone identity resources (projects, users, roles, groups, domains, role assignments, application credentials) into native Kubernetes custom resources. A Composition of this chart lets a user point the bundled auth-bridge at their Keystone endpoint and toggle which per-resource RestDefinitions are emitted.",
-  "required": [
-    "authBridge"
-  ],
   "properties": {
     "restdefinitions": {
       "type": "object",
@@ -193,9 +190,6 @@
       "type": "object",
       "title": "Auth bridge",
       "description": "A stateless openstacksdk reverse proxy: it authenticates with a clouds.yaml, discovers the Keystone identity endpoint, and injects a fresh X-Auth-Token on every call. The generated controllers' plain-HTTP requests are routed through it.",
-      "required": [
-        "upstreamEndpoint"
-      ],
       "properties": {
         "enabled": {
           "type": "boolean",

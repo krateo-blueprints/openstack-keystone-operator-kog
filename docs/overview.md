@@ -55,7 +55,8 @@ prefixed `Identity*` (`IdentityProject`, `IdentityUser`, …), the same reason N
 | `IdentityRole` | `/v3/roles` | create / get / update / delete | on |
 | `IdentityDomain` | `/v3/domains` | create / get / update / delete | on |
 | `IdentityRoleAssignment` | `PUT/DELETE /v3/projects/{p}/users/{u}/roles/{r}` | findby / grant / revoke | on |
-| `IdentityGroup` | `/v3/groups` | create / get / update / delete | off — crdgen quirk |
+| `IdentityGroup` | `/v3/groups` | findby / create / get / update / delete | on |
+| `IdentityGroupRoleAssignment` | `PUT/DELETE /v3/projects/{p}/groups/{g}/roles/{r}` | get (check) / grant / revoke | on |
 | `IdentityApplicationCredential` | `/v3/users/{u}/application_credentials` | create / get / delete | off — body-leak |
 | `IdentityFederationProvider` | `/v3/OS-FEDERATION/identity_providers/{id}` | create / get / update / delete | on |
 | `IdentityMapping` | `/v3/OS-FEDERATION/mappings/{id}` | create / get / update / delete | on |

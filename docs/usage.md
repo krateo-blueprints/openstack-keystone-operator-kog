@@ -117,3 +117,20 @@ kubectl -n krateo-system apply -f chart/samples/federation.yaml
 - An `IdentityApplicationCredential` is the production answer to the expiring-token problem
   the other KOG operators (nova/ironic) hit: mint one here, then point their
   proxies/`clouds.yaml` at it.
+
+## Credentials from the OpenStack blueprint (openrcSecret)
+
+The OpenStack blueprint's Keystone writes its admin credentials as an OpenStack-Helm "openrc"
+Secret (`keystone-keystone-admin`, keys `OS_AUTH_URL`, `OS_USERNAME`, `OS_PASSWORD`, ...). Point the
+auth proxy at it instead of writing a `clouds.yaml`:
+
+```yaml
+authBridge:
+  openrcSecret: keystone-keystone-admin   # in this release's namespace
+  upstreamEndpoint: http://keystone-api.openstack.svc.cluster.local:5000/v3
+```
+
+The proxy then reads the Secret as environment through openstacksdk's `envvars` cloud. Install the
+chart in the Secret's namespace (`openstack`). Use the internal `keystone-api` endpoint: the public
+`keystone` Service has no backend without an ingress controller.
+
