@@ -67,10 +67,11 @@ spec:
     # Keystone auto-creates a per-IdP domain and auto-provisioned projects land
     # there — disconnected from the KOG-managed `keycloak` domain. Pinning it
     # makes auto-provisioning REUSE the KOG `demo` project (same domain, by name)
-    # instead of creating a duplicate. Replace with your domain's id.
-    domain_id: "<KEYCLOAK_DOMAIN_ID>"
+    # instead of creating a duplicate. Given by name (0.4.0): resolved to its id at create.
+    domain: keycloak
     remote_ids:
-      - "http://<KEYCLOAK_HOST>/realms/krateo"
+      # The realm's issuer, exactly as in tokens. Use https: Keystone trusts this issuer's claims.
+      - "https://<KEYCLOAK_HOST>/realms/krateo"
 ---
 # The claims -> Keystone mapping (auto-provisioning into project `demo`).
 apiVersion: identity.openstack.krateo.io/v1alpha1

@@ -28,6 +28,13 @@ components:
           type: string
         domain_id:
           type: string
+          description: Id of the domain the IdP's federated (shadow) users are created in. Immutable after create.
+        domain:
+          type: string
+          description: |
+            Name of that domain, resolved to its id at create (0.4.0). Use it instead of domain_id when the
+            domain is managed elsewhere (e.g. an IdentityDomain), so its server-generated id never has to be
+            copied by hand. An explicit domain_id wins. Like domain_id, it only applies at create.
           description: Domain that owns the shadow users for this IdP.
         remote_ids:
           type: array
@@ -56,6 +63,13 @@ components:
           type: array
           items:
             type: string
+    Named:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
     IdPEnvelope:
       type: object
       properties:
@@ -155,3 +169,24 @@ paths:
       responses:
         '204':
           description: Deleted
+  /domains:
+    get:
+      operationId: listDomains
+      summary: List domains (for the domain name -> id lookup)
+      parameters:
+        - name: name
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Domains.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  domains:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Named'

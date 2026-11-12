@@ -12,6 +12,21 @@ timestamp: 2026-08-11T00:00:00Z
 Curated history; release notes live in GitHub Releases.
 
 
+## 2026-11-12 — 0.4.0: domains by name for identity providers and projects
+
+`IdentityFederationProvider` accepts `spec.identity_provider.domain` and `IdentityProject` accepts
+`spec.project.domain`: a domain NAME, resolved to its id at create by a lookup (`GET /domains?name=`),
+the way `IdentityGroup` already resolves its domain. A domain created by an `IdentityDomain` gets a
+server-generated id, so before this its id had to be copied into these resources by hand. An explicit
+`domain_id` still wins and skips the lookup; `domain` is never sent to Keystone. Both are additive: existing
+CRs are unchanged. The two RestDefinitions also move from the deprecated `requestFieldMapping` to
+`fieldMapping` (same behaviour).
+
+Measured on GKE (Keystone 2026.1 from the OpenStack blueprint 0.3.47, oasgen-provider 0.60.0): an
+`IdentityFederationProvider` with `domain: keycloak` was created with the `keycloak` domain's id as its
+`domain_id`, and `IdentityProject`s with `domain: keycloak` were created in that domain (rendered by
+krateo-openstack-federation).
+
 ## 2026-11-12 — 0.3.2: appVersion corrected to 2026.1
 
 No chart change. 0.3.1 set `appVersion` to `2025.1`, which is wrong: the validation ran the OpenStack
