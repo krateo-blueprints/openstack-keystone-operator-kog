@@ -7,7 +7,7 @@ description: |
   resources, driven by oasgen-provider + rest-dynamic-controller.
 type: application
 version: CHART_VERSION
-# The Keystone release this chart is validated against (quay.io/airshipit/keystone:2026.1, as the
+# The Keystone release this chart is validated against (quay.io/airshipit/keystone:2026.1-ubuntu_noble, as the
 # OpenStack blueprint 0.3.47 runs it), not the
 # chart version: the chart version comes from the git tag.
 appVersion: "2026.1"
