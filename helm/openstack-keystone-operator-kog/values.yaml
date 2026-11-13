@@ -81,9 +81,14 @@ authBridge:
   cloudsSecret: keystone-clouds
   # OR: a Secret of OS_* variables (an OpenStack-Helm "openrc" Secret, e.g. keystone-keystone-admin
   # created by the OpenStack blueprint's Keystone), in this release's namespace. When set it is used
-  # instead of cloudsSecret: the proxy reads it as environment through openstacksdk's built-in
+  # instead of cloudsSecret: the proxy mounts it and reads the OS_* keys through openstacksdk's built-in
   # `envvars` cloud, so no clouds.yaml has to be written by hand. osInterface still applies.
+  # Either Secret is re-read while the proxy runs: a rotated password is picked up within the kubelet's
+  # Secret sync (about a minute), with no restart.
   openrcSecret: ""
+  # Seconds before the proxy retries credentials Keystone rejected. Until the Secret changes or this
+  # passes, requests get 503 without reaching Keystone, so a stale password cannot lock the account.
+  credentialRetrySeconds: 300
   # Cloud name inside clouds.yaml.
   osCloud: openstack
   # Catalog service type to proxy and the interface to discover.

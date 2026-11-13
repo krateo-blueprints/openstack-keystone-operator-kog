@@ -13,10 +13,13 @@ spec:
       app.kubernetes.io/component: auth-bridge
   template:
     metadata:
-      {{- with .Values.authBridge.podAnnotations }}
       annotations:
+        # The proxy script is a ConfigMap: roll the pod when it changes, or an upgrade keeps running the
+        # old script.
+        checksum/script: {{ .Files.Get "scripts/openstack-auth-proxy.py" | sha256sum }}
+        {{- with .Values.authBridge.podAnnotations }}
         {{- toYaml . | nindent 8 }}
-      {{- end }}
+        {{- end }}
       labels:
         {{- include "openstack-keystone-operator-kog.selectorLabels" . | nindent 8 }}
         app.kubernetes.io/component: auth-bridge
@@ -25,45 +28,69 @@ spec:
         - name: proxy
           image: "{{ .Values.authBridge.image.repository }}:{{ .Values.authBridge.image.tag }}"
           imagePullPolicy: {{ .Values.authBridge.image.pullPolicy }}
-          command: ["python3", "/app/openstack-auth-proxy.py"]
-          {{- with .Values.authBridge.openrcSecret }}
-          envFrom:
-            - secretRef:
-                name: {{ . }}
-          {{- end }}
+          command:
+            - python3
+            - /app/openstack-auth-proxy.py
           env:
             {{- if .Values.authBridge.openrcSecret }}
-            # openstacksdk's built-in cloud that reads the OS_* variables loaded above.
-            - { name: OS_CLOUD, value: envvars }
+            # openstacksdk's built-in cloud that reads OS_* variables; the proxy loads them from the
+            # mounted Secret below and re-reads it when it changes (a rotated password needs no restart).
+            - name: OS_CLOUD
+              value: envvars
+            - name: CRED_DIR
+              value: /etc/openstack-openrc
             {{- else }}
-            - { name: OS_CLOUD, value: {{ .Values.authBridge.osCloud | quote }} }
-            - { name: OS_CLIENT_CONFIG_FILE, value: /etc/openstack/clouds.yaml }
+            - name: OS_CLOUD
+              value: {{ .Values.authBridge.osCloud | quote }}
+            - name: OS_CLIENT_CONFIG_FILE
+              value: /etc/openstack/clouds.yaml
             {{- end }}
-            - { name: SERVICE_TYPE, value: {{ .Values.authBridge.serviceType | quote }} }
-            - { name: OS_INTERFACE, value: {{ .Values.authBridge.osInterface | quote }} }
-            - { name: UPSTREAM_ENDPOINT, value: {{ .Values.authBridge.upstreamEndpoint | quote }} }
-            - { name: LISTEN_PORT, value: "8080" }
+            - name: SERVICE_TYPE
+              value: {{ .Values.authBridge.serviceType | quote }}
+            - name: OS_INTERFACE
+              value: {{ .Values.authBridge.osInterface | quote }}
+            - name: UPSTREAM_ENDPOINT
+              value: {{ .Values.authBridge.upstreamEndpoint | quote }}
+            - name: CREDENTIAL_RETRY_SECONDS
+              value: {{ .Values.authBridge.credentialRetrySeconds | default 300 | quote }}
+            - name: LISTEN_PORT
+              value: "8080"
           ports:
             - name: api
               containerPort: 8080
+          # Served by the proxy itself: ready means serving, independent of Keystone accepting the
+          # credentials (GET /_bridge/auth reports that, 503 while they are rejected).
           readinessProbe:
             httpGet:
-              path: /
+              path: /_bridge/ready
               port: 8080
-            initialDelaySeconds: 8
+            initialDelaySeconds: 3
             periodSeconds: 10
           resources:
             {{- toYaml .Values.authBridge.resources | nindent 12 }}
           volumeMounts:
-            - { name: script, mountPath: /app }
-            {{- if not .Values.authBridge.openrcSecret }}
-            - { name: clouds, mountPath: /etc/openstack, readOnly: true }
+            - name: script
+              mountPath: /app
+            {{- if .Values.authBridge.openrcSecret }}
+            - name: openrc
+              mountPath: /etc/openstack-openrc
+              readOnly: true
+            {{- else }}
+            - name: clouds
+              mountPath: /etc/openstack
+              readOnly: true
             {{- end }}
       volumes:
         - name: script
           configMap:
             name: {{ include "openstack-keystone-operator-kog.authBridgeName" . }}
-        {{- if not .Values.authBridge.openrcSecret }}
+        {{- if .Values.authBridge.openrcSecret }}
+        # Mounted, not envFrom: the kubelet updates a mounted Secret in place, environment variables
+        # are fixed at container start.
+        - name: openrc
+          secret:
+            secretName: {{ .Values.authBridge.openrcSecret }}
+        {{- else }}
         - name: clouds
           secret:
             secretName: {{ .Values.authBridge.cloudsSecret }}

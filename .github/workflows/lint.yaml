@@ -43,6 +43,16 @@ jobs:
           python3 -m pip install --quiet pyyaml
           python3 hack/check-schema-required.py
 
+      # Gating. The auth-bridge must pick up a rotated Keystone password without a restart, must not
+      # retry rejected credentials on every request (5 failures lock a Keystone account), and its
+      # readiness must not depend on Keystone accepting the credentials. Runs the real script in front
+      # of a fake Keystone (no cluster).
+      - name: Auth-bridge behaviour (hack/test-auth-bridge.py)
+        run: |
+          set -euo pipefail
+          python3 -m pip install --quiet openstacksdk
+          python3 hack/test-auth-bridge.py
+
       - name: helm template + lint every chart (informational)
         run: |
           set -uo pipefail
