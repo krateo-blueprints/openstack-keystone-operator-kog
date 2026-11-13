@@ -137,3 +137,20 @@ The proxy then reads the Secret as environment through openstacksdk's `envvars` 
 chart in the Secret's namespace (`openstack`). Use the internal `keystone-api` endpoint: the public
 `keystone` Service has no backend without an ingress controller.
 
+
+## Uninstall
+
+Delete the `Identity*` resources before uninstalling the chart. Each generated kind's
+`RestDefinition` carries the `composition.krateo.io/restresources-still-exist-finalizer`, so it is not
+removed (and `helm uninstall --wait` times out) while any resource of that kind still exists. That is
+deliberate: it keeps the CRD, and therefore the resources' finalizers, alive until they are handled.
+What deleting a resource does in Keystone depends on its `krateo.io/deletion-policy` annotation:
+`orphan` leaves the Keystone object in place, `delete` (the default) removes it. Once no resource of a
+kind is left, its `RestDefinition` and CRD go away within seconds (measured: 40 s after the last
+`IdentityDomain` was deleted).
+
+```bash
+kubectl get identitydomains,identityprojects,identitygroups -A   # and the other Identity* kinds you use
+kubectl delete identitydomains --all -n <namespace>
+helm uninstall <release> -n <namespace> --wait
+```
