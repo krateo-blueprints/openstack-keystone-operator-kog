@@ -89,6 +89,8 @@ a **fresh** `X-Auth-Token` on every call (keystoneauth refreshes it automaticall
 a static-token nginx rewrite it never expires and works in-cluster (no public-DNS resolver
 trap). Each OAS subset's `servers[0].url` points the generated controllers at the bridge.
 
-You supply the admin `clouds.yaml` in a Secret named by `authBridge.cloudsSecret`
-(default `keystone-clouds`). See [configuration.md](configuration.md#auth-bridge) for the
-full auth-bridge surface.
+You supply the admin credentials in a Secret: a `clouds.yaml` named by `authBridge.cloudsSecret`
+(default `keystone-clouds`), or a Secret of `OS_*` variables named by `authBridge.openrcSecret`. The
+proxy re-reads it while running, so a rotated password needs no restart, and it never retries rejected
+credentials on every request. See [configuration.md](configuration.md#auth-bridge) for the full
+auth-bridge surface.

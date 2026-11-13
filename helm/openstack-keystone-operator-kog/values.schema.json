@@ -213,7 +213,14 @@
         "openrcSecret": {
           "type": "string",
           "title": "openrc Secret",
-          "description": "Name of a Secret of OS_* variables (e.g. the OpenStack blueprint's keystone-keystone-admin) in the release namespace. When set it replaces cloudsSecret: the proxy uses openstacksdk's envvars cloud."
+          "description": "Name of a Secret of OS_* variables (e.g. the OpenStack blueprint's keystone-keystone-admin) in the release namespace. When set it replaces cloudsSecret: the proxy mounts it and uses openstacksdk's envvars cloud. Re-read while running: a rotated password needs no restart."
+        },
+        "credentialRetrySeconds": {
+          "type": "integer",
+          "title": "Credential retry (s)",
+          "description": "Seconds before the proxy retries credentials Keystone rejected. Until the Secret changes or this passes, requests get 503 without reaching Keystone, so a stale password cannot lock the account.",
+          "minimum": 1,
+          "default": 300
         },
         "osCloud": {
           "type": "string",

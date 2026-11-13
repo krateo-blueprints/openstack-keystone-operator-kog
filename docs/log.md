@@ -12,6 +12,22 @@ timestamp: 2026-08-11T00:00:00Z
 Curated history; release notes live in GitHub Releases.
 
 
+## 2026-11-13 — 0.4.1: the auth-bridge survives a password rotation
+
+Measured by the OpenStack blueprint on GKE: after its upgrade rotated the Keystone admin password, the
+auth-bridge kept the password it read at start (`envFrom`) and called Keystone with it every ~10 s
+(316 failed `POST /v3/auth/tokens`), which locked the admin account for every client for 30 minutes.
+Its readiness probe proxied `GET /` to Keystone, so the 401 made the pod unready, the Service lost its
+endpoints, and every controller saw "connection refused" instead of an identity error.
+
+The credentials Secret (openrc or clouds.yaml) is now mounted and re-read: a changed Secret rebuilds
+the session with no restart. Rejected credentials get one attempt, then 503 with the reason and no
+call to Keystone until they change or `authBridge.credentialRetrySeconds` (default 300) passes.
+Readiness is `/_bridge/ready`, served by the proxy itself; `/_bridge/auth` reports the auth state.
+The Deployment rolls when the proxy script changes (`checksum/script`). Gated in CI by
+`hack/test-auth-bridge.py`: the real script in front of a fake Keystone (14 assertions). The same
+scenario against the 0.4.0 script sent 11 failed authentications for 11 requests and answered 502.
+
 ## 2026-11-12 — 0.4.0: domains by name for identity providers and projects
 
 `IdentityFederationProvider` accepts `spec.identity_provider.domain` and `IdentityProject` accepts
