@@ -36,7 +36,7 @@ clouds:
     auth:
       auth_url: http://keystone-api.openstack.svc.cluster.local:5000/v3
       username: admin
-      password: password
+      password: <your Keystone admin password>
       project_name: admin
       user_domain_name: Default
       project_domain_name: Default
@@ -44,6 +44,10 @@ clouds:
     identity_api_version: 3
     interface: internal
 ```
+
+There is no default admin password to put here: the OpenStack blueprint generates it per install
+(from 0.3.68). With that blueprint, skip `clouds.yaml` and point the auth-bridge at the Secret it
+writes instead ([openrcSecret](#credentials-from-the-openstack-blueprint-openrcsecret)).
 
 ## Install — as a Helm chart
 
@@ -125,7 +129,8 @@ kubectl -n krateo-system apply -f chart/samples/federation.yaml
 
 The OpenStack blueprint's Keystone writes its admin credentials as an OpenStack-Helm "openrc"
 Secret (`keystone-keystone-admin`, keys `OS_AUTH_URL`, `OS_USERNAME`, `OS_PASSWORD`, ...). Point the
-auth proxy at it instead of writing a `clouds.yaml`:
+auth proxy at it instead of writing a `clouds.yaml`. From blueprint 0.3.68 `OS_PASSWORD` is generated per
+install; the Secret keeps its name and keys, so this is the way to follow it, including a re-generated one:
 
 ```yaml
 authBridge:
