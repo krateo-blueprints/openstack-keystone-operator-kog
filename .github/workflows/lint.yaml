@@ -53,6 +53,11 @@ jobs:
           python3 -m pip install --quiet openstacksdk
           python3 hack/test-auth-bridge.py
 
+      # Gating. No document may pass an OpenStack-Helm published password as a credential: from
+      # krateo-openstack-blueprint 0.3.68 it is generated per install, so such an instruction fails.
+      - name: Docs pass no published credentials (hack/validate-docs-no-published-credentials.py)
+        run: python3 hack/validate-docs-no-published-credentials.py
+
       - name: helm template + lint every chart (informational)
         run: |
           set -uo pipefail
