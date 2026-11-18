@@ -4,7 +4,7 @@ title: openstack-keystone-operator-kog — overview
 description: What the blueprint is and how it is built — the KOG pipeline (OAS subset → RestDefinition → generated CRD), the Identity* Kind naming, the auth-refreshing proxy, and the OS-FEDERATION resource set.
 resource: oci://ghcr.io/krateo-blueprints/charts/openstack-keystone-operator-kog
 tags: [krateo, kog, keystone, oasgen-provider, rest-dynamic-controller, architecture]
-timestamp: 2026-08-11T00:00:00Z
+timestamp: 2026-11-18T00:00:00Z
 ---
 
 # Overview
@@ -33,7 +33,7 @@ Keystone object                (HTTP call through the auth-bridge)
 
 The `RestDefinition` names the resource `kind`, its `identifiers`, any
 `additionalStatusFields`, and one entry per verb (`create` / `get` / `update` / `delete`,
-or `findby` / `create` / `delete` for actions) with the HTTP method, path, and the
+or a check-style `get` / `create` / `delete` for grants) with the HTTP method, path, and the
 mapping between path params and CR fields. Each verb's request/response shape comes from
 the OAS subset in `chart/assets/`.
 
@@ -54,7 +54,7 @@ prefixed `Identity*` (`IdentityProject`, `IdentityUser`, …), the same reason N
 | `IdentityUser` | `/v3/users` | create / get / update / delete | on |
 | `IdentityRole` | `/v3/roles` | create / get / update / delete | on |
 | `IdentityDomain` | `/v3/domains` | create / get / update / delete | on |
-| `IdentityRoleAssignment` | `PUT/DELETE /v3/projects/{p}/users/{u}/roles/{r}` | findby / grant / revoke | on |
+| `IdentityRoleAssignment` | `GET/PUT/DELETE /v3/projects/{p}/users/{u}/roles/{r}` | get (check) / grant / revoke | on |
 | `IdentityGroup` | `/v3/groups` | findby / create / get / update / delete | on |
 | `IdentityGroupRoleAssignment` | `PUT/DELETE /v3/projects/{p}/groups/{g}/roles/{r}` | get (check) / grant / revoke | on |
 | `IdentityApplicationCredential` | `/v3/users/{u}/application_credentials` | create / get / delete | off — body-leak |
@@ -62,8 +62,9 @@ prefixed `Identity*` (`IdentityProject`, `IdentityUser`, …), the same reason N
 | `IdentityMapping` | `/v3/OS-FEDERATION/mappings/{id}` | create / get / update / delete | on |
 | `IdentityFederationProtocol` | `/v3/OS-FEDERATION/identity_providers/{idp}/protocols/{id}` | create / get / update / delete | on |
 
-`IdentityRoleAssignment` is an idempotent grant (a `PUT`/`DELETE` on a composite path,
-not a CRUD object) modeled as a single CR; re-firing the `PUT` is a harmless no-op.
+`IdentityRoleAssignment` and `IdentityGroupRoleAssignment` are grants: a `PUT`/`DELETE` on a
+composite path rather than a CRUD object. Each is observed with Keystone's check endpoint, a `GET` on
+the same path that answers `204` or `404`, so a CR is Ready exactly when the grant exists.
 `IdentityDomain` must be disabled (`update` with `enabled:false`) before it can be
 deleted. Two resources ship **disabled** with documented limitations — see
 [configuration.md](configuration.md#disabled-by-default-resources).

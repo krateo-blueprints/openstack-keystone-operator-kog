@@ -58,6 +58,13 @@ jobs:
       - name: Docs pass no published credentials (hack/validate-docs-no-published-credentials.py)
         run: python3 hack/validate-docs-no-published-credentials.py
 
+      # Gating. A findby whose identifiers are not keys of the list item it searches can never match:
+      # absence is inferred every reconcile and create re-fires forever, with nothing erroring.
+      # IdentityRoleAssignment shipped that way (Keystone nests user.id/role.id/scope.project.id;
+      # dp303). Also refuses a findby item schema that declares no properties. Self-tests first.
+      - name: findby identifiers are keys of the list item (hack/validate-findby-identifiers.py)
+        run: python3 hack/validate-findby-identifiers.py
+
       - name: helm template + lint every chart (informational)
         run: |
           set -uo pipefail

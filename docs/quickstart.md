@@ -4,7 +4,7 @@ title: openstack-keystone-operator-kog — quickstart
 description: Install the operator, kubectl apply an IdentityProject, and watch it appear in the Horizon dashboard — end to end from clouds.yaml Secret to a created Keystone project.
 resource: oci://ghcr.io/krateo-blueprints/charts/openstack-keystone-operator-kog
 tags: [krateo, kog, keystone, quickstart, runbook]
-timestamp: 2026-08-11T00:00:00Z
+timestamp: 2026-11-18T00:00:00Z
 ---
 
 # Quickstart — Keystone (identity) operator
@@ -68,7 +68,7 @@ kind: IdentityProjectConfiguration
 metadata: {name: keystone-config, namespace: krateo-system}
 spec: {authentication: {bearer: {tokenRef: {name: keystone-token, namespace: krateo-system, key: token}}}}
 ---
-apiVersion: identity.openstack.krateo.io/v1alpha1
+apiVersion: identity.openstack.krateo.io/v3-0
 kind: IdentityProject
 metadata: {name: kog-demo-project, namespace: krateo-system}
 spec:

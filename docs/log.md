@@ -4,13 +4,31 @@ title: openstack-keystone-operator-kog — log
 description: Curated chronological history of the openstack-keystone-operator-kog blueprint — notable changes and decisions, not a generated changelog.
 resource: oci://ghcr.io/krateo-blueprints/charts/openstack-keystone-operator-kog
 tags: [krateo, kog, keystone, log, history]
-timestamp: 2026-08-11T00:00:00Z
+timestamp: 2026-11-18T00:00:00Z
 ---
 
 # Log
 
 Curated history; release notes live in GitHub Releases.
 
+
+## 2026-11-18 — 0.4.2: IdentityRoleAssignment becomes Ready
+
+Measured on live data-plane run dp303 (GKE, blueprint 0.3.73, keystone-kog 0.4.1,
+rest-dynamic-controller 0.80.0): an `IdentityRoleAssignment` stayed Ready=False while Synced=True.
+The controller logged `PUT …/roles/{r}` → 204, then `GET /role_assignments` with absence inferred
+again for the same generation, and sent the PUT again, forever.
+
+The kind was observed with `findby GET /role_assignments` on the identifiers `project_id`, `user_id`,
+`role_id`. Keystone lists each assignment nested, as `user.id`, `role.id` and `scope.project.id`
+(`keystone/api/role_assignments.py` `_format_entity`), so those keys were never present and the match
+could never succeed. The OAS item schema was `additionalProperties: true`, so nothing showed it.
+
+It now uses Keystone's check endpoint, `GET /projects/{project_id}/users/{user_id}/roles/{role_id}`
+(204 granted, 404 not), like `IdentityGroupRoleAssignment`. The identifiers are unchanged because
+they are immutable on an installed RestDefinition, and with no findby they are compared against
+nothing. A new CI gate, `hack/validate-findby-identifiers.py`, refuses any findby whose identifiers
+are not keys of its declared list item, and any findby item that declares no properties.
 
 ## 2026-11-13 — 0.4.1: the auth-bridge survives a password rotation
 

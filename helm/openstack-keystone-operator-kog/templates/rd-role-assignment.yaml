@@ -9,19 +9,36 @@ spec:
   oasPath: configmap://{{ .Release.Namespace }}/{{ .Release.Name }}-role-assignment/roleassignment.yaml
   resourceGroup: {{ .Values.restdefinitions.role_assignment.resourceGroup }}
   resource:
-    # A role grant is an idempotent action on a composite path. findby on the
-    # flat /role_assignments list never cleanly matches the composite, so create
-    # (PUT) fires; PUT is idempotent so a re-fire is a harmless no-op.
+    # One role granted to one user on one project, addressed by the three ids.
+    #   get    = Keystone's check endpoint: 204 granted (no body: exists, up to date), 404 not granted.
+    #   create = PUT (grant), delete = DELETE (revoke); a 404 on delete counts as already revoked.
+    #
+    # This used to be a findby on GET /role_assignments, documented as "never cleanly matches, so
+    # the PUT re-fires harmlessly". The PUT was harmless; the CR was not: Keystone lists each
+    # assignment NESTED (user.id, role.id, scope.project.id -- keystone/api/role_assignments.py
+    # _format_entity), so the flat identifiers below never matched, absence was inferred on every
+    # reconcile, the grant was re-sent forever, and the CR never became Ready (data-plane run dp303,
+    # 2026-11-18). The check endpoint answers the question directly, like IdentityGroupRoleAssignment.
+    #
+    # identifiers are unchanged on purpose: oasgen-provider's RestDefinition CRD makes them
+    # immutable, so changing them would make `helm upgrade` fail on every existing install. With no
+    # findby they are no longer compared against anything.
     kind: {{ .Values.restdefinitions.role_assignment.resourceKind }}
     identifiers:
       - project_id
       - user_id
       - role_id
     verbsDescription:
-      - action: findby
+      - action: get
         method: GET
-        path: /role_assignments
-        identifiersMatchPolicy: AND
+        path: /projects/{project_id}/users/{user_id}/roles/{role_id}
+        requestFieldMapping:
+          - inPath: project_id
+            inCustomResource: spec.project_id
+          - inPath: user_id
+            inCustomResource: spec.user_id
+          - inPath: role_id
+            inCustomResource: spec.role_id
       - action: create
         method: PUT
         path: /projects/{project_id}/users/{user_id}/roles/{role_id}
