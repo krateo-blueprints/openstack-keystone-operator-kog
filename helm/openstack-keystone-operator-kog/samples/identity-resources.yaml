@@ -17,7 +17,7 @@ spec:
     bearer:
       tokenRef: { name: keystone-token, namespace: krateo-system, key: token }
 ---
-apiVersion: identity.openstack.krateo.io/v1alpha1
+apiVersion: identity.openstack.krateo.io/v3-0
 kind: IdentityProject
 metadata:
   name: demo-project
@@ -30,7 +30,7 @@ spec:
     description: Created by keystone-kog
     enabled: true
 ---
-apiVersion: identity.openstack.krateo.io/v1alpha1
+apiVersion: identity.openstack.krateo.io/v3-0
 kind: IdentityUser
 metadata:
   name: demo-user
@@ -45,7 +45,7 @@ spec:
     email: demo@example.com
     enabled: true
 ---
-apiVersion: identity.openstack.krateo.io/v1alpha1
+apiVersion: identity.openstack.krateo.io/v3-0
 kind: IdentityRole
 metadata:
   name: demo-role
@@ -56,7 +56,7 @@ spec:
     name: demo-role
 ---
 # Grant demo-role to demo-user on demo-project (fill in the IDs from the CR statuses).
-apiVersion: identity.openstack.krateo.io/v1alpha1
+apiVersion: identity.openstack.krateo.io/v3-0
 kind: IdentityRoleAssignment
 metadata:
   name: demo-grant
@@ -68,7 +68,7 @@ spec:
   role_id: "<demo-role id>"
 ---
 # A long-lived application credential for demo-user (replaces expiring tokens).
-apiVersion: identity.openstack.krateo.io/v1alpha1
+apiVersion: identity.openstack.krateo.io/v3-0
 kind: IdentityApplicationCredential
 metadata:
   name: demo-appcred

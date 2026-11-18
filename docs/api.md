@@ -4,7 +4,7 @@ title: openstack-keystone-operator-kog — API
 description: The CompositionDefinition CRD this blueprint registers, the RestDefinition the chart emits per resource, and the shape of the generated Identity* / Identity*Configuration CRDs.
 resource: oci://ghcr.io/krateo-blueprints/charts/openstack-keystone-operator-kog
 tags: [krateo, kog, keystone, compositiondefinition, restdefinition, crd]
-timestamp: 2026-08-11T00:00:00Z
+timestamp: 2026-11-18T00:00:00Z
 ---
 
 # API
@@ -59,10 +59,19 @@ Example (`IdentityProject`): CRUD verbs `create POST /projects`, `get GET /proje
 `update PATCH /projects/{id}`, `delete DELETE /projects/{id}`, with `{id}` mapped from
 `status.project.id`.
 
-`IdentityRoleAssignment` is modeled as an idempotent action, not CRUD: `findby GET
-/role_assignments` (with `identifiersMatchPolicy: AND`), `create PUT
-/projects/{project_id}/users/{user_id}/roles/{role_id}`, and the matching `delete` —
-`project_id`/`user_id`/`role_id` mapped from `spec.*`.
+`IdentityRoleAssignment` has no id of its own: it is addressed by its three ids, and all three verbs
+use the same path, `/projects/{project_id}/users/{user_id}/roles/{role_id}`, with
+`project_id`/`user_id`/`role_id` mapped from `spec.*`:
+
+| Verb | HTTP | Keystone answers |
+|------|------|------------------|
+| get | `GET` (Keystone's check) | `204` granted → exists, up to date; `404` not granted → create |
+| create | `PUT` (grant) | `204` |
+| delete | `DELETE` (revoke) | `204`; a `404` counts as already revoked |
+
+Until 0.4.2 this kind was observed with `findby GET /role_assignments` on flat identifiers. Keystone
+lists each assignment nested (`user.id`, `role.id`, `scope.project.id`), so that findby never matched,
+the grant was re-sent every reconcile, and the CR never became Ready. See [log.md](log.md).
 
 Federation resources use a client-chosen id in the path (`PUT`), and their `update` verb
 is `PATCH` because Keystone's `PUT /OS-FEDERATION/.../{id}` is create-only (returns 409 if
@@ -72,11 +81,12 @@ the object exists).
 
 `oasgen-provider` reads each `RestDefinition` and generates two CRDs:
 
-- **`Identity<Res>`** — group `identity.openstack.krateo.io`, version `v1alpha1`. Its
+- **`Identity<Res>`** — group `identity.openstack.krateo.io`, version `v3-0`, which oasgen-provider
+  derives from the OAS `info.version` (`"3.0"`); measured on a 0.80.0 cluster. Its
   `spec` is the OAS request schema wrapped in the Keystone envelope (`spec.project.*`,
   `spec.user.*`, …) plus a `configurationRef`. Its `status` carries the identifiers and
   `additionalStatusFields` (e.g. `status.project.id`).
-- **`Identity<Res>Configuration`** — carries the bearer token (from the OAS `http`/`bearer`
+- **`Identity<Res>Configuration`** — version `v1alpha1` (fixed, unlike the managed kinds). It carries the bearer token (from the OAS `http`/`bearer`
   security scheme) via `spec.authentication.bearer.tokenRef`. Because the auth-bridge
   injects the real `X-Auth-Token`, the referenced token value is a placeholder. Create one
   `Configuration` per Kind you use.

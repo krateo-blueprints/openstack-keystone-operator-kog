@@ -50,7 +50,7 @@ spec:
         key: token
 ---
 # The identity provider — trusts the Keycloak realm's issuer.
-apiVersion: identity.openstack.krateo.io/v1alpha1
+apiVersion: identity.openstack.krateo.io/v3-0
 kind: IdentityFederationProvider
 metadata:
   name: keycloak
@@ -74,7 +74,7 @@ spec:
       - "https://<KEYCLOAK_HOST>/realms/krateo"
 ---
 # The claims -> Keystone mapping (auto-provisioning into project `demo`).
-apiVersion: identity.openstack.krateo.io/v1alpha1
+apiVersion: identity.openstack.krateo.io/v3-0
 kind: IdentityMapping
 metadata:
   name: keycloak-mapping
@@ -102,7 +102,7 @@ spec:
           - type: OIDC-preferred_username
 ---
 # Bind the `openid` protocol on the IdP to the mapping.
-apiVersion: identity.openstack.krateo.io/v1alpha1
+apiVersion: identity.openstack.krateo.io/v3-0
 kind: IdentityFederationProtocol
 metadata:
   name: keycloak-openid

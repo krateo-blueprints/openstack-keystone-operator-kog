@@ -2,11 +2,25 @@ openapi: 3.0.3
 info:
   title: OpenStack Identity (Keystone) v3 - Role Assignments (KOG-friendly subset)
   description: |
-    Grant/revoke a role to a user on a project. A role assignment is not a CRUD
-    object - it is an idempotent grant: PUT assigns, DELETE revokes (both 204).
-    Modeled as a CR whose create fires the PUT; since PUT is idempotent, a
-    re-fire is a harmless no-op. The CRD Kind is `IdentityRoleAssignment`.
-    Paths are relative to the identity endpoint base (.../v3).
+    Grant, check and revoke one role for one user on one project. A role
+    assignment has no id of its own: it is addressed entirely by its three
+    path ids, and Keystone exposes exactly the three operations a controller
+    needs on that address (keystone/api/projects.py ProjectUserGrantResource):
+
+      GET    /projects/{project_id}/users/{user_id}/roles/{role_id}  check:  204 granted, 404 not
+      PUT    /projects/{project_id}/users/{user_id}/roles/{role_id}  grant:  204
+      DELETE /projects/{project_id}/users/{user_id}/roles/{role_id}  revoke: 204
+
+    The check is what observes the CR. It replaces a findby on GET /role_assignments, which
+    could never match: Keystone formats each listed assignment NESTED (user.id, role.id,
+    scope.project.id; keystone/api/role_assignments.py _format_entity), so top-level
+    project_id / user_id / role_id identifiers were never present, the controller inferred
+    absence on every reconcile, re-sent the PUT and never reported Ready.
+
+    The CRD Kind is `IdentityRoleAssignment`. Paths are relative to the identity endpoint
+    base (.../v3). No `security` requirement is declared: neither oasgen-provider nor
+    rest-dynamic-controller reads security requirements, only securitySchemes, which still
+    generate the <Kind>Configuration. The auth-bridge injects the real X-Auth-Token.
   version: "3.0"
 servers:
   - url: {{ include "openstack-keystone-operator-kog.authBridgeUrl" . }}
@@ -30,42 +44,42 @@ components:
           type: string
         role_id:
           type: string
-    RoleAssignmentList:
-      type: object
-      properties:
-        role_assignments:
-          type: array
-          items:
-            type: object
-            additionalProperties: true
-security:
-  - bearer: []
 paths:
-  /role_assignments:
-    get:
-      operationId: listRoleAssignments
-      summary: List role assignments
-      tags: [role-assignments]
-      security:
-        - bearer: []
-      responses:
-        '200':
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/RoleAssignmentList'
   /projects/{project_id}/users/{user_id}/roles/{role_id}:
     parameters:
-      - { name: project_id, in: path, required: true, schema: { type: string } }
-      - { name: user_id, in: path, required: true, schema: { type: string } }
-      - { name: role_id, in: path, required: true, schema: { type: string } }
+      - name: project_id
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: user_id
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: role_id
+        in: path
+        required: true
+        schema:
+          type: string
+    get:
+      operationId: checkRole
+      summary: Check whether a user has a role on a project
+      tags:
+        - role-assignments
+      # Only 2xx codes count as success for rest-dynamic-controller, so 204 with no body
+      # means "exists, up to date"; the 404 is declared for the reader and is what the
+      # controller maps to "not found", which triggers the grant.
+      responses:
+        '204':
+          description: The role is assigned
+        '404':
+          description: The role is not assigned (or the project, user or role does not exist)
     put:
       operationId: grantRole
       summary: Assign a role to a user on a project
-      tags: [role-assignments]
-      security:
-        - bearer: []
+      tags:
+        - role-assignments
       # Keystone's grant PUT takes no body; this requestBody exists only so
       # oasgen derives project_id/user_id/role_id as CR spec fields (they are
       # the composite path params). Keystone ignores the body.
@@ -81,9 +95,8 @@ paths:
     delete:
       operationId: revokeRole
       summary: Revoke a role from a user on a project
-      tags: [role-assignments]
-      security:
-        - bearer: []
+      tags:
+        - role-assignments
       responses:
         '204':
           description: Revoked
