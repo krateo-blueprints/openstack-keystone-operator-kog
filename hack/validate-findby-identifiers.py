@@ -74,6 +74,7 @@ Usage: validate-findby-identifiers.py [chart-dir]   (default: helm/openstack-key
 """
 import contextlib
 import io
+import re
 import os
 import shutil
 import subprocess
@@ -111,6 +112,12 @@ SPEC_BY_NAME_MIN = (0, 52, 0)
 #                  get that tolerates 404 is its own WARNING: it can mask a deletion.
 # Anything else must be ASSERTED, with the vendor evidence, on the RestDefinition:
 GET_ABSENT_EVIDENCE = "kog.openstack.krateo.io/get-absent-evidence"
+# The evidence is an AUTHOR'S CITATION: the gate checks its presence and form, never its truth, and it can
+# go stale after a vendor refactor. So it must name the vendor TAG it was read at, for a human or a
+# scheduled job to re-verify; the gate itself never fetches vendor source (a fetch fails closed on a
+# network blip and passes on a 404 page). Tag-shaped: a stable/<series> branch, a version (2026.1,
+# 29.1.1), or a commit hash.
+EVIDENCE_TAG = r"stable/[\w.\-]+|\b\d+\.\d+(?:\.\d+)*\b|\b[0-9a-f]{12,40}\b"
 MIN_DECLARATION = r"oasgen-provider\s*(?:>=|\u2265)\s*(\d+\.\d+\.\d+)"
 
 
@@ -307,8 +314,12 @@ def create_reach(doc, verbs, spec, annotations=None):
     elif get.get("notFoundCodes"):
         fine, verdict = True, ("fine (functional): the get declares notFoundCodes %s, remapped to not-found at "
                                "restclient.go:371-376 (oasgen-provider 0.80.0)" % get["notFoundCodes"])
-    elif evidence is not None and evidence.strip():
+    elif evidence is not None and evidence.strip() and re.search(EVIDENCE_TAG, evidence):
         fine, verdict = True, "asserted, with evidence (%s): %s" % (GET_ABSENT_EVIDENCE, evidence.strip())
+    elif evidence is not None and evidence.strip():
+        fine, refused = False, True
+        verdict = ("REFUSED: %s names no vendor tag (a stable/<series>, a version or a commit), so it cannot be "
+                   "re-verified when the vendor refactors" % GET_ABSENT_EVIDENCE)
     elif evidence is not None:
         fine, refused = False, True
         verdict = "REFUSED: %s is present but empty -- an assertion needs its vendor evidence" % GET_ABSENT_EVIDENCE
@@ -325,6 +336,12 @@ def create_reach(doc, verbs, spec, annotations=None):
 
 def vstr(v):
     return ".".join(str(x) for x in v)
+
+
+def minimum_is_supported(version):
+    """The declared minimum is a FLOOR: any version at or above SPEC_BY_NAME_MIN is supported. Never an
+    equality -- a repository pinned exactly to 0.52.0 must keep being screened when its pin moves."""
+    return tuple(version) >= SPEC_BY_NAME_MIN
 
 
 def declared_min_oasgen(chart):
@@ -348,7 +365,7 @@ def declared_min_oasgen(chart):
     if len(found) > 1:
         raise SystemExit("FAIL: %s declares several minimum oasgen-provider versions %s; keep one" % (readme, found))
     v = tuple(int(x) for x in found[0].split("."))
-    if v < SPEC_BY_NAME_MIN:
+    if not minimum_is_supported(v):
         raise SystemExit("FAIL: %s declares oasgen-provider >= %s, below %s: there a self-referencing path "
                          "parameter has no spec field (before oasgen-provider #421), so this gate's "
                          "reachability verdicts do not hold. Raise the minimum, or do not rely on this gate"
@@ -412,12 +429,14 @@ def check(docs, oasgen_min=SPEC_BY_NAME_MIN):
                     # ironic NodePower shape): BOTH the findby and the create are inert.
                     if "update" in actions:
                         print("WARNING  %s: findby AND create are inert %s -- the get %s is spec-buildable (%s) "
-                              "and declares no absence, so the kind works only through get + update" %
-                              (where, at, get["path"], how))
+                              "and has no absence signal (no notFoundBody or notFoundCodes, no %s; a 404 declared "
+                              "in the OAS does not count), so the kind works only through get + update" %
+                              (where, at, get["path"], how, GET_ABSENT_EVIDENCE))
                     else:
                         failures.append("%s: findby AND create are inert %s -- the get %s is spec-buildable (%s) "
-                                        "and declares no absence -- and there is no update verb, so nothing can "
-                                        "ever write" % (where, at, get["path"], how))
+                                        "and has no absence signal (no notFoundBody or notFoundCodes, no %s; a "
+                                        "404 declared in the OAS does not count) -- and there is no update verb, so "
+                                        "nothing can ever write" % (where, at, get["path"], how, GET_ABSENT_EVIDENCE))
                     continue
                 failures.append("%s: findby is UNREACHABLE %s because the get %s is spec-buildable (%s): "
                                 "IsResourceKnown is true from the first reconcile, so observe always uses the "
@@ -598,6 +617,14 @@ def self_test():
         ("inert shape with an update verb (a WARNING, not a failure)", _fixture(named, ["name"],
             verbs_extra=get_verb + [{"action": "update", "method": "PUT", "path": "/things/{id}"}],
             create_body=req_body, get_responses={"200": {"description": "ok"}}), False),
+        # The inert verdict uses the SAME absence rule as create-reach: a declared OAS 404 alone does not
+        # rescue it; an evidence annotation does (and the findby is then just unreachable).
+        ("inert shape, get declares an OAS 404 only (still inert, no update -> fail)", _fixture(named, ["name"],
+            verbs_extra=get_verb, create_body=req_body,
+            get_responses={"200": {"description": "ok"}, "404": {"description": "absent"}}), True),
+        ("inert shape with evidence: not inert, findby merely unreachable (fail)", _fixture(named, ["name"],
+            verbs_extra=get_verb, create_body=req_body, get_responses={"200": {"description": "ok"}},
+            annotations={GET_ABSENT_EVIDENCE: "vendor/api/things.py:42 at 1.0 raises NotFound (404)"}), True),
     ]
     for label, docs, want_fail in cases:
         with contextlib.redirect_stdout(io.StringIO()):
@@ -632,6 +659,8 @@ def self_test():
         ("an evidenced assertion", reach(get_verb, ok200, annotations=evidence), True, False),
         ("an assertion with an empty reason", reach(get_verb, ok200, annotations={GET_ABSENT_EVIDENCE: " "}),
          False, True),
+        ("an assertion that names no vendor tag", reach(get_verb, ok200, annotations={
+            GET_ABSENT_EVIDENCE: "vendor/api/things.py raises NotFound when absent"}), False, True),
         ("create on the get's own path, nothing declared (nova quota shape)",
          reach(get_verb, ok200, create_path="/things/{id}"), False, False),
     ]
@@ -663,7 +692,12 @@ def self_test():
         check(tol)
     if "tolerates 404" not in out.getvalue():
         raise SystemExit("FAIL: self-test: a get tolerating 404 was not warned about")
-    print("self-test: %d detector cases and %d create-reach cases behave" % (len(cases), len(reach_cases) + 3))
+    # The declared minimum is a floor, not an equality.
+    for v, want in (((0, 53, 0), True), ((0, 52, 0), True), ((0, 51, 0), False), ((1, 0, 0), True)):
+        if minimum_is_supported(v) != want:
+            raise SystemExit("FAIL: self-test: a declared minimum %s should %s" % (vstr(v), "pass" if want else "fail"))
+    print("self-test: %d detector cases, %d create-reach cases and 4 minimum-version cases behave" %
+          (len(cases), len(reach_cases) + 3))
 
 
 def main():

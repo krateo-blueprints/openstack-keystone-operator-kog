@@ -21,6 +21,22 @@ standalone rest-dynamic-controller repository stops at 0.20.0):
 | `tolerateCodes` with 404 | **WARNING** | `restclient.go:381-383` turns it into an empty success, read as exists and up to date (`restResources.go:681-700`), so a deletion is masked |
 | annotation `kog.openstack.krateo.io/get-absent-evidence` | passes as **asserted, with evidence**; an empty value is refused | the gate itself, which reads the vendor citation you write there |
 
+### What the evidence annotation is, and is not
+
+`get-absent-evidence` is **an author's citation**. The gate checks that it is present and well formed,
+never that it is true, and it can go stale when the vendor refactors. So:
+- **Name the tag** the citation was read at, such as `keystone stable/2026.1 keystone/api/projects.py
+  L396-417`, so it can be re-checked. A value with no tag-shaped token (a `stable/<series>`, a version
+  like `2026.1` or `29.1.1`, or a commit hash) is refused.
+- **Re-verification is a periodic human or scheduled task**, never a network fetch inside the gate. A
+  gate that fetched vendor source would fail closed on a network blip, and pass on a 404 page.
+
+### The oasgen-provider minimum is a floor
+
+The README's `oasgen-provider >= X.Y.Z` is checked as a floor: any minimum at or above 0.52.0 is
+accepted. It is never an equality, so a repository pinned to exactly one version keeps being screened
+when its pin moves. The self-test pins this: 0.52.0, 0.53.0 and 1.0.0 pass, 0.51.0 fails.
+
 ## Other gates
 
 - `check-schema-required.py`: no `required` key in values.schema.json that values.yaml defaults.
