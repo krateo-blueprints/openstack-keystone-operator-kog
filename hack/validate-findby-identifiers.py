@@ -41,12 +41,14 @@ by name, or by a request mapping from a required spec field or a resolver -- the
 first reconcile:
   4. A findby on such a kind can never run. That is refused as "unreachable because the get is
      spec-buildable". It is not an identifier problem, and a fieldMapping would not repair it.
-  5. The create then runs only when that get reports absent. That is fine when the get declares a
-     discriminator between "not yet created" and "created": a notFoundBody, or a 404 response in the
-     OAS. The create's path does not settle it; nova's quota GET answers 200 for any tenant. Otherwise
-     it is printed as a WARNING (not a failure): the create may be unreachable, and with an update verb
-     the kind works only through get + update. Every create-bearing kind with a spec-buildable get is
-     printed with the reason it is fine or not.
+  5. The create then runs only when that get reports absent. It passes automatically only on a declaration
+     rest-dynamic-controller ACTS on -- a notFoundBody or notFoundCodes on the get (consuming file:line in
+     the comment above GET_ABSENT_EVIDENCE). A 404 declared in the OAS is NOT evidence: absence is decided
+     from the wire status. Otherwise the kind must ASSERT it with vendor evidence, as the annotation
+     kog.openstack.krateo.io/get-absent-evidence: "<vendor file:line at tag> returns 404 when absent";
+     without one it prints a WARNING that this cannot be decided statically, and an empty assertion is
+     refused. A get that tolerates 404 gets its own WARNING (it masks a deletion). A summary line always
+     says how many candidates were checked and how each came out, even when there are none.
 
 ACTION-ONLY KINDS. For some kinds a findby that never matches is the design: the create IS the
 action, and a matching findby would turn every later request into a silent no-op (the ironic KOG
@@ -91,6 +93,24 @@ ACTION_ONLY = "kog.openstack.krateo.io/findby-action-only"
 # tests/oasgen-generator/ironic_power_get_routing_test.go). So every verdict below assumes
 # oasgen-provider >= SPEC_BY_NAME_MIN, and the repository must declare a minimum at or above it.
 SPEC_BY_NAME_MIN = (0, 52, 0)
+
+# Create reachability: which declarations rest-dynamic-controller ACTS on, and where (oasgen-provider
+# tag 0.80.0, go/rest-dynamic-controller unless noted). Only these pass automatically.
+#   notFoundBody   declared apis/restdefinitions/v1alpha1/types.go:777 (oasgen-provider module);
+#                  consumed internal/controllers/restResources.go:663 (helpers existence.go:139-150).
+#   notFoundCodes  declared types.go:764; consumed internal/tools/client/restclient.go:371-376, which
+#                  remaps those statuses to a not-found StatusError.
+# NOT evidence:
+#   a 404 in the OAS: absence is decided from the WIRE status (internal/tools/client/validators.go:148-150,
+#                  IsNotFoundError = HasStatusErr(err, 404)); declared responses only build the 2xx success
+#                  set (clienttools.go:75-88, restclient.go:389,399). Whether the vendor's get CAN answer 404
+#                  is a vendor-source fact -- nova's quota GET answers 200 for any project, its keypair GET
+#                  404s a missing keypair, and neither declared a 404.
+#   tolerateCodes: restclient.go:381-383 turns those statuses into an empty SUCCESS, which observe reads as
+#                  exists and up to date (restResources.go:681-700) -- the opposite of reporting absence. A
+#                  get that tolerates 404 is its own WARNING: it can mask a deletion.
+# Anything else must be ASSERTED, with the vendor evidence, on the RestDefinition:
+GET_ABSENT_EVIDENCE = "kog.openstack.krateo.io/get-absent-evidence"
 MIN_DECLARATION = r"oasgen-provider\s*(?:>=|\u2265)\s*(\d+\.\d+\.\d+)"
 
 
@@ -270,36 +290,38 @@ def get_reachability(doc, verbs, spec):
     return True, ", ".join(how) or "no path parameters"
 
 
-def create_reach(doc, verbs, spec):
+def create_reach(doc, verbs, spec, annotations=None):
     """None when the precondition does not apply (no create, or a get that is not spec-buildable);
-    otherwise (fine, text). Printed as information or a WARNING, never a failure."""
+    otherwise (fine, text, refused). `refused` is set for an evidence annotation with no content."""
     buildable, how = get_reachability(doc, verbs, spec)
     create = next((v for v in verbs if v.get("action") == "create"), None)
     get = next((v for v in verbs if v.get("action") == "get"), None)
     if not buildable or create is None:
         return None
-    # The create's own path does NOT settle it: nova's GET /os-quota-sets/{tenant_id} answers 200 with
-    # defaults for any tenant, so a PUT-on-own-path create there is unreachable too. Only a declared
-    # discriminator counts.
-    try:
-        _, gop = operation(doc, get)
-        codes = {str(c) for c in (gop.get("responses", {}) or {})}
-    except ValueError:
-        codes = set()
+    annotations = annotations or {}
+    evidence = annotations.get(GET_ABSENT_EVIDENCE)
+    refused = False
     if get.get("notFoundBody"):
-        fine, verdict = True, "fine: the get declares a notFoundBody that reports absence"
-    elif "404" in codes:
-        fine, verdict = True, "fine: the get declares a 404 response (absent until created)"
-    elif any(v.get("action") == "update" for v in verbs):
-        fine, verdict = False, ("WARNING: nothing declares that the get reports absence, so the create may "
-                                "never run and the kind works only through get + update; if that is intended, "
-                                "say so in the definition, otherwise declare the get's 404 or a notFoundBody")
+        fine, verdict = True, ("fine (functional): the get declares a notFoundBody, consumed at "
+                               "restResources.go:663 (oasgen-provider 0.80.0)")
+    elif get.get("notFoundCodes"):
+        fine, verdict = True, ("fine (functional): the get declares notFoundCodes %s, remapped to not-found at "
+                               "restclient.go:371-376 (oasgen-provider 0.80.0)" % get["notFoundCodes"])
+    elif evidence is not None and evidence.strip():
+        fine, verdict = True, "asserted, with evidence (%s): %s" % (GET_ABSENT_EVIDENCE, evidence.strip())
+    elif evidence is not None:
+        fine, refused = False, True
+        verdict = "REFUSED: %s is present but empty -- an assertion needs its vendor evidence" % GET_ABSENT_EVIDENCE
     else:
-        fine, verdict = False, ("WARNING: the create may be unreachable -- nothing declares that the get "
-                                "reports absence before the create; declare the get's 404 or a notFoundBody")
+        fine = False
+        verdict = ("WARNING: cannot be decided statically -- the create runs only if the vendor's get can return "
+                   "404 for a missing object. A 404 declared in the OAS does not count (rest-dynamic-controller "
+                   "decides absence from the wire status, validators.go:148-150). Cite the vendor source in %s, "
+                   "or declare a notFoundBody/notFoundCodes" % GET_ABSENT_EVIDENCE)
+        if any(v.get("action") == "update" for v in verbs):
+            verdict += "; if the vendor's get never 404s, the kind works only through get + update"
     return fine, "get %s is spec-buildable (%s); create %s %s -> %s" % (
-        get["path"], how, create["method"], create["path"], verdict)
-
+        get["path"], how, create["method"], create["path"], verdict), refused
 
 def vstr(v):
     return ".".join(str(x) for x in v)
@@ -341,6 +363,7 @@ def check(docs, oasgen_min=SPEC_BY_NAME_MIN):
     if not rds:
         return ["no RestDefinition rendered -- nothing was checked"], 0, 0
     failures, findbys = [], 0
+    stats = {"reach": 0, "fine": 0, "warning": 0, "refused": 0, "tolerate": 0}
     for rd in rds:
         name = rd["metadata"]["name"]
         res = rd["spec"]["resource"]
@@ -358,9 +381,23 @@ def check(docs, oasgen_min=SPEC_BY_NAME_MIN):
         actions = {v.get("action") for v in verbs}
         buildable, how = get_reachability(doc, verbs, spec)
         get = next((v for v in verbs if v.get("action") == "get"), None)
-        reach = create_reach(doc, verbs, spec)
+        annotations = rd["metadata"].get("annotations") or {}
+        reach = create_reach(doc, verbs, spec, annotations)
         if reach:
+            stats["reach"] += 1
+            stats["fine" if reach[0] else ("refused" if reach[2] else "warning")] += 1
             print("create-reach  %s  %s" % (name, reach[1]))
+            if reach[2]:
+                failures.append("%s: %s" % (name, reach[1]))
+        elif GET_ABSENT_EVIDENCE in annotations:
+            failures.append("%s: declares %s but does not meet the create-reach precondition (a create and a "
+                            "spec-buildable get) -- remove the stale assertion" % (name, GET_ABSENT_EVIDENCE))
+        get_verb = next((v for v in verbs if v.get("action") == "get"), None)
+        if get_verb and 404 in (get_verb.get("tolerateCodes") or []):
+            stats["tolerate"] += 1
+            print("WARNING  %s: the get tolerates 404, which rest-dynamic-controller turns into an empty "
+                  "success read as exists and up to date (restclient.go:381-383, restResources.go:681-700): a "
+                  "deleted object would look present" % name)
         if not finders:
             if exemption:
                 failures.append("%s: declares %s but has no findby verb -- remove the stale exemption" % (name, ACTION_ONLY))
@@ -369,7 +406,7 @@ def check(docs, oasgen_min=SPEC_BY_NAME_MIN):
             findbys += 1
             where = "%s findby %s %s" % (name, verb["method"], verb["path"])
             if buildable:
-                reach = create_reach(doc, verbs, spec)
+                reach = create_reach(doc, verbs, spec, rd["metadata"].get("annotations") or {})
                 if reach is not None and not reach[0]:
                     # findby + spec-buildable get + create, and nothing says the get reports absence (the
                     # ironic NodePower shape): BOTH the findby and the create are inert.
@@ -455,6 +492,9 @@ def check(docs, oasgen_min=SPEC_BY_NAME_MIN):
             failures.append("%s: findby can never match (%s), so absence is inferred every reconcile. Fix the "
                             "identifiers, or declare %s with a reason if matching would be wrong for this kind"
                             % (where, summary, ACTION_ONLY))
+    print("create-reach: %d candidate(s) (a create plus a spec-buildable get): %d fine, %d WARNING, %d refused; "
+          "%d get verb(s) tolerating 404" % (stats["reach"], stats["fine"], stats["warning"], stats["refused"],
+                                             stats["tolerate"]))
     return failures, len(rds), findbys
 
 
@@ -566,8 +606,9 @@ def self_test():
             raise SystemExit("FAIL: self-test %r: expected %s, got %s -- the detector is broken, so a pass "
                              "would mean nothing" % (label, "a failure" if want_fail else "a pass",
                                                      failures or "a pass"))
-    # create-reach verdicts (information/WARNING, never a failure).
-    def reach(verbs_extra, get_responses=None, create_path="/things"):
+    # create-reach verdicts. Only FUNCTIONAL declarations (notFoundBody, notFoundCodes) or an evidenced
+    # assertion pass; a declared OAS 404 is documentation and must not.
+    def reach(verbs_extra, get_responses=None, create_path="/things", annotations=None):
         docs = _fixture(named, ["name"], verbs_extra=verbs_extra, create_body=req_body)
         oas = yaml.safe_load(docs[0]["data"]["oas.yaml"])
         if get_responses is not None:
@@ -577,26 +618,52 @@ def self_test():
         for v in rd["verbsDescription"]:
             if v["action"] == "create":
                 v["path"] = create_path
-        return create_reach(oas, rd["verbsDescription"], generated_spec(oas, rd["verbsDescription"]))
+        return create_reach(oas, rd["verbsDescription"], generated_spec(oas, rd["verbsDescription"]), annotations)
     ok200 = {"200": {"description": "ok"}}
+    with404 = dict(ok200, **{"404": {"description": "absent"}})
+    evidence = {GET_ABSENT_EVIDENCE: "vendor/api/things.py:42 at 1.0 raises NotFound (404) when absent"}
     reach_cases = [
-        ("spec-buildable get, create elsewhere, nothing discriminates", reach(get_verb, ok200), False),
-        ("same, get declares a 404", reach(get_verb, dict(ok200, **{"404": {"description": "absent"}})), True),
-        ("same, get has a notFoundBody", reach([dict(get_verb[0], notFoundBody={"inline": ".x == null"})], ok200), True),
-        ("create on the get's own path, nothing declared (nova quota shape)", reach(get_verb, ok200,
-                                                                                      create_path="/things/{id}"), False),
+        # (label, result, want_fine, want_refused)
+        ("nothing declared", reach(get_verb, ok200), False, False),
+        ("a declared OAS 404 alone (inert)", reach(get_verb, with404), False, False),
+        ("a notFoundBody (functional)", reach([dict(get_verb[0], notFoundBody={"inline": ".x == null"})], ok200),
+         True, False),
+        ("notFoundCodes (functional)", reach([dict(get_verb[0], notFoundCodes=[410])], ok200), True, False),
+        ("an evidenced assertion", reach(get_verb, ok200, annotations=evidence), True, False),
+        ("an assertion with an empty reason", reach(get_verb, ok200, annotations={GET_ABSENT_EVIDENCE: " "}),
+         False, True),
+        ("create on the get's own path, nothing declared (nova quota shape)",
+         reach(get_verb, ok200, create_path="/things/{id}"), False, False),
     ]
-    for label, got, want_fine in reach_cases:
-        if got is None or got[0] != want_fine:
-            raise SystemExit("FAIL: self-test create-reach %r: expected %s, got %r" %
-                             (label, "fine" if want_fine else "a WARNING", got))
+    for label, got, want_fine, want_refused in reach_cases:
+        if got is None or got[0] != want_fine or got[2] != want_refused:
+            raise SystemExit("FAIL: self-test create-reach %r: expected %s, got %r" % (
+                label, "refused" if want_refused else ("fine" if want_fine else "a WARNING"), got))
     def reach_status():
         docs = _fixture(named, ["name"], verbs_extra=status_get, create_body=name_body)
         oas = yaml.safe_load(docs[0]["data"]["oas.yaml"]); v = docs[1]["spec"]["resource"]["verbsDescription"]
         return create_reach(oas, v, generated_spec(oas, v))
     if reach_status() is not None:
         raise SystemExit("FAIL: self-test create-reach: a get addressed from status must not meet the precondition")
-    print("self-test: %d detector cases and %d create-reach cases behave" % (len(cases), len(reach_cases) + 1))
+    # A chart with NO findby at all must still run create-reach, and say so -- never a silent clean
+    # (nova-kog declares zero findby on all six kinds).
+    zero = _fixture(named, ["name"], verbs_extra=get_verb, create_body=req_body, get_responses=ok200)
+    zero[1]["spec"]["resource"]["verbsDescription"] = [
+        v for v in zero[1]["spec"]["resource"]["verbsDescription"] if v["action"] != "findby"]
+    out = io.StringIO()
+    with contextlib.redirect_stdout(out):
+        zf, _, zfind = check(zero)
+    if zfind != 0 or "1 candidate(s)" not in out.getvalue() or "1 WARNING" not in out.getvalue():
+        raise SystemExit("FAIL: self-test zero-findby chart: expected 0 findby and 1 create-reach WARNING, got "
+                         "findby=%s output=%r" % (zfind, out.getvalue()))
+    # A get that tolerates 404 masks a deletion: its own WARNING.
+    tol = _fixture(named, ["name"], verbs_extra=[dict(status_get[0], tolerateCodes=[404])], create_body=name_body)
+    out = io.StringIO()
+    with contextlib.redirect_stdout(out):
+        check(tol)
+    if "tolerates 404" not in out.getvalue():
+        raise SystemExit("FAIL: self-test: a get tolerating 404 was not warned about")
+    print("self-test: %d detector cases and %d create-reach cases behave" % (len(cases), len(reach_cases) + 3))
 
 
 def main():
