@@ -12,6 +12,24 @@ timestamp: 2026-11-18T00:00:00Z
 Curated history; release notes live in GitHub Releases.
 
 
+## 2026-11-18 — create reachability rests on evidence, not on a declared 404
+
+The nova KOG pointed out, and I confirmed at oasgen-provider 0.80.0, that rest-dynamic-controller
+decides absence from the **wire** status (`validators.go:148-150`). A 404 declared in the OAS is
+documentation only. Nova shows why that matters: its quota GET answers 200 for any project and its
+keypair GET 404s, yet neither declares a 404. So the create-reachability report:
+- passes automatically only on declarations the controller acts on: `notFoundBody` and
+  `notFoundCodes` (consuming file:line in `hack/README.md`);
+- otherwise needs `kog.openstack.krateo.io/get-absent-evidence` with the vendor citation. Without
+  it the report prints a WARNING that this cannot be decided statically, and an empty value is
+  refused;
+- warns separately about a get that tolerates 404, which masks a deletion.
+
+The five keystone candidates (role assignment, group role assignment, identity provider, mapping,
+protocol) now carry the evidence: Keystone source file:line, plus the live measurement for the role
+assignment. The OAS 404s stay as documentation. A summary line always reports what was checked, even
+for a chart with no findby at all.
+
 ## 2026-11-18 — findby gate: the oasgen version it assumes; the inert findby+create shape
 
 The reachability verdicts hold only from oasgen-provider 0.52.0 (#421, which fixed #419). Before it, a

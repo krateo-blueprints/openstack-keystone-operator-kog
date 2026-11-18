@@ -3,6 +3,11 @@ apiVersion: ogen.krateo.io/v1alpha1
 kind: RestDefinition
 metadata:
   name: {{ .Release.Name }}-role-assignment
+  annotations:
+    # The get must be able to answer "absent", or the create never runs (hack/validate-findby-identifiers.py).
+    # A 404 declared in the OAS is documentation only; this is the vendor evidence that the get 404s.
+    kog.openstack.krateo.io/get-absent-evidence: >-
+      keystone stable/2026.1 keystone/api/projects.py ProjectUserGrantResource.get L396-417 calls assignment_api.get_grant; keystone/assignment/backends/sql.py check_grant_role_id raises RoleAssignmentNotFound (L140), a NotFound (exception.py L491), so 404 when not granted. Measured live: kind, Keystone 29.1.1, check 404 before the grant and 204 after (keystone-kog #24).
   labels:
     {{- include "openstack-keystone-operator-kog.labels" . | nindent 4 }}
 spec:

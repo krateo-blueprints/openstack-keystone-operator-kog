@@ -3,6 +3,11 @@ apiVersion: ogen.krateo.io/v1alpha1
 kind: RestDefinition
 metadata:
   name: {{ .Release.Name }}-mapping
+  annotations:
+    # The get must be able to answer "absent", or the create never runs (hack/validate-findby-identifiers.py).
+    # A 404 declared in the OAS is documentation only; this is the vendor evidence that the get 404s.
+    kog.openstack.krateo.io/get-absent-evidence: >-
+      keystone stable/2026.1 keystone/api/os_federation.py MappingResource.get L303-315 calls federation_api.get_mapping; keystone/federation/backends/sql.py raises MappingNotFound (L331), a NotFound, so 404 when absent.
   labels:
     {{- include "openstack-keystone-operator-kog.labels" . | nindent 4 }}
 spec:
