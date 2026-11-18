@@ -166,7 +166,19 @@ jobs:
           done < <(find . -type f -name compositiondefinition.yaml -not -path '*/charts/*' -print0)
           echo "CompositionDefinitions stamped: $found"
 
+      # krateo-blueprints/charts PUBLISHING.md rule 14: charts are pushed through the organisation's chart-push
+      # action, whose push.sh retries GHCR's tag read-after-write race (and only that) onto the same digest. Locate
+      # mode: it outputs push.sh's path, and the next step runs it once per chart.
+      - name: Locate the shared chart push
+        id: chart-push
+        uses: krateo-platformops/.github/.github/actions/chart-push@653ac1e67d761584993a774c76963514968b3650 # main 2026-11-18
+
       - name: Package and push
+        env:
+          CHART_PUSH: ${{ steps.chart-push.outputs.path }}
+          # push.sh reads the manifest back with these, after the registry login above.
+          REGISTRY_USERNAME: ${{ github.actor }}
+          REGISTRY_PASSWORD: ${{ github.token }}
         run: |
           set -euo pipefail
           # Refuse here, before GHCR holds the version, every archive the Marketplace index's publisher
@@ -259,7 +271,7 @@ jobs:
             helm package "$dir" --version "${VERSION}" --destination /tmp/pkg
             tgz="/tmp/pkg/${name}-${VERSION}.tgz"
             gate "$name" "$tgz" blueprints || exit 1
-            helm push "$tgz" "${OCI_REPO}"
+            bash "${CHART_PUSH}" "$tgz" "${OCI_REPO}"
             echo "pushed ${name}:${VERSION}"
             # The same bytes that went to GHCR, for the index.
             cp "$tgz" charts-dist/
