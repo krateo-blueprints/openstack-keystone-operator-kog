@@ -65,6 +65,12 @@ jobs:
       - name: findby identifiers are keys of the list item (hack/validate-findby-identifiers.py)
         run: python3 hack/validate-findby-identifiers.py
 
+      # Gating. release-tag attaches the stamped CompositionDefinition to a release that release-notes
+      # may create concurrently; the publisher must treat "already exists" as success and still fail on
+      # anything else. Runs against a stand-in gh, no network.
+      - name: Release asset publisher survives the release-notes race (hack/test-publish-release-assets.sh)
+        run: bash hack/test-publish-release-assets.sh
+
       - name: helm template + lint every chart (informational)
         run: |
           set -uo pipefail
