@@ -118,7 +118,12 @@ GET_ABSENT_EVIDENCE = "kog.openstack.krateo.io/get-absent-evidence"
 # network blip and passes on a 404 page). Tag-shaped: a stable/<series> branch, a version (2026.1,
 # 29.1.1), or a commit hash.
 EVIDENCE_TAG = r"stable/[\w.\-]+|\b\d+\.\d+(?:\.\d+)*\b|\b[0-9a-f]{12,40}\b"
-MIN_DECLARATION = r"oasgen-provider\s*(?:>=|\u2265)\s*(\d+\.\d+\.\d+)"
+# One declaration: "oasgen-provider >= X.Y.Z", optionally "except A.B.C[, D.E.F...]" for versions inside the
+# range that are known broken for this repository (nova-kog: >= 0.52.0 except 0.53.0, 0.54.0, which broke
+# apiKey RBAC). The exclusions keep the declaration honest; they do not change the reachability verdicts,
+# because every allowed version is still >= the floor, which is >= SPEC_BY_NAME_MIN.
+MIN_DECLARATION = (r"oasgen-provider\s*(?:>=|\u2265)\s*(\d+\.\d+\.\d+)"
+                   r"(?:\s+except\s+(\d+\.\d+\.\d+(?:\s*,\s*\d+\.\d+\.\d+)*))?")
 
 
 def render(chart):
@@ -344,10 +349,41 @@ def minimum_is_supported(version):
     return tuple(version) >= SPEC_BY_NAME_MIN
 
 
+def parse_min_declaration(text):
+    """(floor, exclusions) from the ONE "oasgen-provider >= X.Y.Z [except A.B.C, ...]" declaration in text.
+    Raises ValueError with the reason when there is none, more than one, a floor below SPEC_BY_NAME_MIN, an
+    exclusion at or below the floor (it excludes nothing the declaration allows), or a duplicate exclusion."""
+    decls = sorted({m.group(0).strip() for m in re.finditer(MIN_DECLARATION, text)})
+    if not decls:
+        raise ValueError("declares no minimum oasgen-provider. The reachability verdicts hold only from %s "
+                         "(oasgen-provider #421); state the repository's minimum as \"oasgen-provider >= X.Y.Z\", "
+                         "optionally followed by \"except A.B.C, ...\"" % vstr(SPEC_BY_NAME_MIN))
+    if len(decls) > 1:
+        raise ValueError("declares several minimum oasgen-provider declarations %s; keep one" % decls)
+    m = re.search(MIN_DECLARATION, text)
+    floor = tuple(int(x) for x in m.group(1).split("."))
+    if not minimum_is_supported(floor):
+        raise ValueError("declares oasgen-provider >= %s, below %s: there a self-referencing path parameter has "
+                         "no spec field (before oasgen-provider #421), so this gate's reachability verdicts do not "
+                         "hold. Raise the minimum, or do not rely on this gate" % (m.group(1), vstr(SPEC_BY_NAME_MIN)))
+    exclusions = [tuple(int(x) for x in v.strip().split(".")) for v in (m.group(2) or "").split(",") if v.strip()]
+    for e in exclusions:
+        if e <= floor:
+            raise ValueError("excludes %s, which is not above the floor %s, so the exclusion means nothing; "
+                             "remove it or raise the floor" % (vstr(e), vstr(floor)))
+    if len(set(exclusions)) != len(exclusions):
+        raise ValueError("lists an excluded version twice (%s)" % ", ".join(vstr(e) for e in exclusions))
+    return floor, sorted(exclusions)
+
+
+def declaration_text(floor, exclusions):
+    return "oasgen-provider >= %s%s" % (vstr(floor), (" except " + ", ".join(vstr(e) for e in exclusions))
+                                        if exclusions else "")
+
+
 def declared_min_oasgen(chart):
-    """The minimum oasgen-provider the repository declares in its README ("oasgen-provider >= X.Y.Z"),
-    found by walking up from the chart directory. Returns (version tuple, README path) or raises."""
-    import re
+    """The minimum oasgen-provider the repository declares in its README, found by walking up from the chart
+    directory. Returns (floor, exclusions, README path) or raises."""
     d = os.path.abspath(chart)
     while True:
         readme = os.path.join(d, "README.md")
@@ -357,24 +393,14 @@ def declared_min_oasgen(chart):
         if parent == d:
             raise SystemExit("FAIL: no README.md above %s, so no declared minimum oasgen-provider" % chart)
         d = parent
-    found = sorted(set(re.findall(MIN_DECLARATION, open(readme).read())))
-    if not found:
-        raise SystemExit("FAIL: %s declares no minimum oasgen-provider. The reachability verdicts hold only "
-                         "from %s (oasgen-provider #421); state the repository's minimum as "
-                         "\"oasgen-provider >= X.Y.Z\"" % (readme, vstr(SPEC_BY_NAME_MIN)))
-    if len(found) > 1:
-        raise SystemExit("FAIL: %s declares several minimum oasgen-provider versions %s; keep one" % (readme, found))
-    v = tuple(int(x) for x in found[0].split("."))
-    if not minimum_is_supported(v):
-        raise SystemExit("FAIL: %s declares oasgen-provider >= %s, below %s: there a self-referencing path "
-                         "parameter has no spec field (before oasgen-provider #421), so this gate's "
-                         "reachability verdicts do not hold. Raise the minimum, or do not rely on this gate"
-                         % (readme, found[0], vstr(SPEC_BY_NAME_MIN)))
-    return v, readme
+    try:
+        floor, exclusions = parse_min_declaration(open(readme).read())
+    except ValueError as e:
+        raise SystemExit("FAIL: %s %s" % (readme, e))
+    return floor, exclusions, readme
 
-
-def check(docs, oasgen_min=SPEC_BY_NAME_MIN):
-    at = "at oasgen-provider >= %s (this repository's declared minimum)" % vstr(oasgen_min)
+def check(docs, oasgen_min=SPEC_BY_NAME_MIN, exclusions=()):
+    at = "at %s (this repository's declared minimum)" % declaration_text(oasgen_min, exclusions)
     configmaps = {d["metadata"]["name"]: d for d in docs if d.get("kind") == "ConfigMap"}
     rds = [d for d in docs if d.get("kind") == "RestDefinition"]
     if not rds:
@@ -696,17 +722,37 @@ def self_test():
     for v, want in (((0, 53, 0), True), ((0, 52, 0), True), ((0, 51, 0), False), ((1, 0, 0), True)):
         if minimum_is_supported(v) != want:
             raise SystemExit("FAIL: self-test: a declared minimum %s should %s" % (vstr(v), "pass" if want else "fail"))
-    print("self-test: %d detector cases, %d create-reach cases and 4 minimum-version cases behave" %
-          (len(cases), len(reach_cases) + 3))
+    # The declaration syntax: one floor, optional exclusions above it.
+    decl_cases = [
+        ("oasgen-provider >= 0.52.0 except 0.53.0, 0.54.0", ((0, 52, 0), [(0, 53, 0), (0, 54, 0)])),
+        ("Requires **oasgen-provider >= 0.58.0**: lookups", ((0, 58, 0), [])),
+        ("oasgen-provider >= 0.54.1 except 0.53.0", None),                    # exclusion below the floor
+        ("oasgen-provider >= 0.52.0 except 0.52.0", None),                    # excludes the floor itself
+        ("oasgen-provider >= 0.52.0 except 0.53.0, 0.53.0", None),            # duplicate
+        ("oasgen-provider >= 0.52.0\nalso oasgen-provider >= 0.61.0", None),  # two declarations
+        ("oasgen-provider >= 0.51.0", None),                                  # floor below 0.52.0
+        ("no declaration here", None),
+    ]
+    for text, want in decl_cases:
+        try:
+            got = parse_min_declaration(text)
+        except ValueError:
+            got = None
+        if got != want:
+            raise SystemExit("FAIL: self-test declaration %r: expected %s, got %s" % (text, want or "refused", got))
+    print("self-test: %d detector cases, %d create-reach cases, 4 minimum-version cases and %d declaration cases "
+          "behave" % (len(cases), len(reach_cases) + 3, len(decl_cases)))
 
 
 def main():
     self_test()
     chart = sys.argv[1] if len(sys.argv) > 1 else DEFAULT_CHART
-    minimum, readme = declared_min_oasgen(chart)
-    print("oasgen-provider minimum: %s (from %s); reachability verdicts assume >= %s" %
-          (vstr(minimum), os.path.relpath(readme), vstr(SPEC_BY_NAME_MIN)))
-    failures, n_rd, n_findby = check(render(chart), minimum)
+    minimum, exclusions, readme = declared_min_oasgen(chart)
+    print("oasgen-provider minimum: %s (from %s); reachability verdicts assume >= %s%s" %
+          (declaration_text(minimum, exclusions), os.path.relpath(readme), vstr(SPEC_BY_NAME_MIN),
+           "; the excluded versions are this repository's known-broken ones, not a reachability concern"
+           if exclusions else ""))
+    failures, n_rd, n_findby = check(render(chart), minimum, exclusions)
     print("checked %d RestDefinitions, %d findby verb(s)" % (n_rd, n_findby))
     for f in failures:
         print("FAIL: " + f)
