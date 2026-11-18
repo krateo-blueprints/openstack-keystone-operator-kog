@@ -31,11 +31,21 @@ never that it is true, and it can go stale when the vendor refactors. So:
 - **Re-verification is a periodic human or scheduled task**, never a network fetch inside the gate. A
   gate that fetched vendor source would fail closed on a network blip, and pass on a 404 page.
 
-### The oasgen-provider minimum is a floor
+### The oasgen-provider minimum: one floor, optional exclusions
 
-The README's `oasgen-provider >= X.Y.Z` is checked as a floor: any minimum at or above 0.52.0 is
-accepted. It is never an equality, so a repository pinned to exactly one version keeps being screened
-when its pin moves. The self-test pins this: 0.52.0, 0.53.0 and 1.0.0 pass, 0.51.0 fails.
+The top-level README holds exactly one declaration:
+
+    oasgen-provider >= X.Y.Z [except A.B.C, D.E.F]
+
+- **The floor is a floor:** any version at or above it is supported, never an equality, so a repository
+  pinned to exactly one version keeps being screened when its pin moves. The floor must be at least
+  0.52.0 (oasgen-provider #421), the version the reachability verdicts assume.
+- **`except` lists versions inside the range that are known broken for this repository.** For example,
+  nova-kog's apiKey documents break on 0.53.0 and 0.54.0, so its honest declaration is
+  `oasgen-provider >= 0.52.0 except 0.53.0, 0.54.0`. The exclusions don't change the reachability
+  verdicts, since every allowed version is still at least 0.52.0. The gate prints them.
+- **Refused:** no declaration, more than one, a floor below 0.52.0, an exclusion at or below the floor
+  (it excludes nothing), and a duplicate exclusion.
 
 ## Other gates
 
