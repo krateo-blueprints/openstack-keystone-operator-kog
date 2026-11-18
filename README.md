@@ -27,6 +27,10 @@ Full picture: [docs/index.md](docs/index.md) and [docs/overview.md](docs/overvie
 
 ## Install
 
+Requires **oasgen-provider >= 0.58.0**: `IdentityGroup` and `IdentityGroupRoleAssignment` need path and
+query parameters supplied by lookups ([docs/api.md](docs/api.md)). CI reads this minimum
+(`hack/validate-findby-identifiers.py`), so keep it the one place the version is stated.
+
 Prereq — Krateo's KOG provider and a `clouds.yaml` Secret:
 
 ```bash

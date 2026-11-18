@@ -12,6 +12,20 @@ timestamp: 2026-11-18T00:00:00Z
 Curated history; release notes live in GitHub Releases.
 
 
+## 2026-11-18 — findby gate: the oasgen version it assumes; the inert findby+create shape
+
+The reachability verdicts hold only from oasgen-provider 0.52.0 (#421, which fixed #419). Before it, a
+self-referencing path parameter had no spec field, so the get was not spec-buildable and a findby on
+the same kind was live. The ironic KOG measured the routing identically at 0.61.0 and 0.80.0.
+- The gate names that assumption (`SPEC_BY_NAME_MIN`), reads the repository's minimum from the README
+  ("oasgen-provider >= X.Y.Z", now stated: 0.58.0, the lookups' floor), and refuses a missing,
+  ambiguous or too-low declaration. Its messages say which version they hold at.
+- A stale action-only exemption is reported with that version coordinate. An exemption that looks
+  stale is often a correct reading whose version moved.
+- A findby + spec-buildable get + create kind whose get declares no absence (the ironic NodePower
+  shape) has its own verdict: findby AND create are inert, and the kind works only through get +
+  update. That is a WARNING with an update verb and a failure without one.
+
 ## 2026-11-18 — findby gate: reachability (an unreachable findby, a create that may not run)
 
 rest-dynamic-controller fills a call's path parameters from spec fields by name before it applies any

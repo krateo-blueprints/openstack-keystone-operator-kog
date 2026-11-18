@@ -83,6 +83,16 @@ import yaml
 DEFAULT_CHART = "helm/openstack-keystone-operator-kog"
 ACTION_ONLY = "kog.openstack.krateo.io/findby-action-only"
 
+# The reachability verdicts depend on the oasgen-provider version. A path parameter whose request
+# mapping is self-referential (inPath: x, inCustomResource: spec.x) has a spec field ONLY from
+# oasgen-provider #421 (fixing #419), first released in tag 0.52.0: below it, the generator deleted the
+# spec property the mapping reads, the get was not spec-buildable, and a findby on the same kind was
+# live. The ironic KOG measured the routing identically at 0.61.0 and 0.80.0 (ironic-kog #121,
+# tests/oasgen-generator/ironic_power_get_routing_test.go). So every verdict below assumes
+# oasgen-provider >= SPEC_BY_NAME_MIN, and the repository must declare a minimum at or above it.
+SPEC_BY_NAME_MIN = (0, 52, 0)
+MIN_DECLARATION = r"oasgen-provider\s*(?:>=|\u2265)\s*(\d+\.\d+\.\d+)"
+
 
 def render(chart):
     """Render a copy of the chart with the CHART_VERSION placeholder stamped (helm rejects it as a
@@ -291,7 +301,41 @@ def create_reach(doc, verbs, spec):
         get["path"], how, create["method"], create["path"], verdict)
 
 
-def check(docs):
+def vstr(v):
+    return ".".join(str(x) for x in v)
+
+
+def declared_min_oasgen(chart):
+    """The minimum oasgen-provider the repository declares in its README ("oasgen-provider >= X.Y.Z"),
+    found by walking up from the chart directory. Returns (version tuple, README path) or raises."""
+    import re
+    d = os.path.abspath(chart)
+    while True:
+        readme = os.path.join(d, "README.md")
+        if os.path.isfile(readme):
+            break
+        parent = os.path.dirname(d)
+        if parent == d:
+            raise SystemExit("FAIL: no README.md above %s, so no declared minimum oasgen-provider" % chart)
+        d = parent
+    found = sorted(set(re.findall(MIN_DECLARATION, open(readme).read())))
+    if not found:
+        raise SystemExit("FAIL: %s declares no minimum oasgen-provider. The reachability verdicts hold only "
+                         "from %s (oasgen-provider #421); state the repository's minimum as "
+                         "\"oasgen-provider >= X.Y.Z\"" % (readme, vstr(SPEC_BY_NAME_MIN)))
+    if len(found) > 1:
+        raise SystemExit("FAIL: %s declares several minimum oasgen-provider versions %s; keep one" % (readme, found))
+    v = tuple(int(x) for x in found[0].split("."))
+    if v < SPEC_BY_NAME_MIN:
+        raise SystemExit("FAIL: %s declares oasgen-provider >= %s, below %s: there a self-referencing path "
+                         "parameter has no spec field (before oasgen-provider #421), so this gate's "
+                         "reachability verdicts do not hold. Raise the minimum, or do not rely on this gate"
+                         % (readme, found[0], vstr(SPEC_BY_NAME_MIN)))
+    return v, readme
+
+
+def check(docs, oasgen_min=SPEC_BY_NAME_MIN):
+    at = "at oasgen-provider >= %s (this repository's declared minimum)" % vstr(oasgen_min)
     configmaps = {d["metadata"]["name"]: d for d in docs if d.get("kind") == "ConfigMap"}
     rds = [d for d in docs if d.get("kind") == "RestDefinition"]
     if not rds:
@@ -325,10 +369,23 @@ def check(docs):
             findbys += 1
             where = "%s findby %s %s" % (name, verb["method"], verb["path"])
             if buildable:
-                failures.append("%s: findby is UNREACHABLE because the get %s is spec-buildable (%s): "
+                reach = create_reach(doc, verbs, spec)
+                if reach is not None and not reach[0]:
+                    # findby + spec-buildable get + create, and nothing says the get reports absence (the
+                    # ironic NodePower shape): BOTH the findby and the create are inert.
+                    if "update" in actions:
+                        print("WARNING  %s: findby AND create are inert %s -- the get %s is spec-buildable (%s) "
+                              "and declares no absence, so the kind works only through get + update" %
+                              (where, at, get["path"], how))
+                    else:
+                        failures.append("%s: findby AND create are inert %s -- the get %s is spec-buildable (%s) "
+                                        "and declares no absence -- and there is no update verb, so nothing can "
+                                        "ever write" % (where, at, get["path"], how))
+                    continue
+                failures.append("%s: findby is UNREACHABLE %s because the get %s is spec-buildable (%s): "
                                 "IsResourceKnown is true from the first reconcile, so observe always uses the "
                                 "get. This is not an identifier problem; remove the findby, or source a get path "
-                                "parameter from status" % (where, get["path"], how))
+                                "parameter from status" % (where, at, get["path"], how))
                 continue
             try:
                 item = list_item(doc, response_schema(doc, verb), verb.get("itemsPath", ""))
@@ -378,8 +435,13 @@ def check(docs):
                     print("info  %s  identifier %s unmatchable: %s" % (where, ident, why_not[ident]))
             if can_match:
                 if exemption:
-                    failures.append("%s: declares %s, but this findby CAN match under %s -- after the first match the "
-                                    "create is unreachable; remove the exemption or the match" % (where, ACTION_ONLY, policy))
+                    failures.append("%s: declares %s, but this findby CAN match under %s %s: %s %s of both the "
+                                    "list item and the generated spec, so after the first match the create is "
+                                    "unreachable. If the exemption was right for an older oasgen-provider (before "
+                                    "#421, %s, a self-referencing parameter had no spec field), the version moved; "
+                                    "remove the exemption or the match" %
+                                    (where, ACTION_ONLY, policy, at, ", ".join(matchable),
+                                     "is a key" if len(matchable) == 1 else "are keys", vstr(SPEC_BY_NAME_MIN)))
                 continue
             summary = ("no identifiers declared" if not ids else
                        "%s policy, matchable: %s of %d" % (policy, matchable or "none", len(ids)))
@@ -397,7 +459,7 @@ def check(docs):
 
 
 def _fixture(item, identifiers, finder_extra=None, verbs_extra=None, annotations=None, resource_extra=None,
-             create_body=None):
+             create_body=None, get_responses=None):
     """A minimal rendered pair -- one ConfigMap, one RestDefinition -- for the self-test."""
     body = create_body or {"type": "object", "properties": {i.split(".")[0]: {"type": "string"} for i in identifiers}}
     oas = {"paths": {
@@ -411,6 +473,8 @@ def _fixture(item, identifiers, finder_extra=None, verbs_extra=None, annotations
         "/things/{id}": {"parameters": [{"name": "id", "in": "path", "required": True, "schema": {"type": "string"}}],
                          "get": {"responses": {"200": {"content": {"application/json": {"schema": item}}}}}},
     }}
+    if get_responses is not None:
+        oas["paths"]["/things/{id}"]["get"]["responses"] = get_responses
     finder = {"action": "findby", "method": "GET", "path": "/things", "itemsPath": "things"}
     finder.update(finder_extra or {})
     verbs = [finder, {"action": "create", "method": "POST", "path": "/things"}] + (verbs_extra or [])
@@ -488,6 +552,12 @@ def self_test():
             verbs_extra=status_get, create_body=req_body), True),
         ("findby with a get whose path param maps from a required spec field", _fixture(named, ["name"],
             verbs_extra=mapped_get, create_body=req_body_label), True),
+        # findby + spec-buildable get + create, no declared absence: findby AND create inert (NodePower shape).
+        ("inert shape without an update verb", _fixture(named, ["name"], verbs_extra=get_verb, create_body=req_body,
+                                                         get_responses={"200": {"description": "ok"}}), True),
+        ("inert shape with an update verb (a WARNING, not a failure)", _fixture(named, ["name"],
+            verbs_extra=get_verb + [{"action": "update", "method": "PUT", "path": "/things/{id}"}],
+            create_body=req_body, get_responses={"200": {"description": "ok"}}), False),
     ]
     for label, docs, want_fail in cases:
         with contextlib.redirect_stdout(io.StringIO()):
@@ -532,7 +602,10 @@ def self_test():
 def main():
     self_test()
     chart = sys.argv[1] if len(sys.argv) > 1 else DEFAULT_CHART
-    failures, n_rd, n_findby = check(render(chart))
+    minimum, readme = declared_min_oasgen(chart)
+    print("oasgen-provider minimum: %s (from %s); reachability verdicts assume >= %s" %
+          (vstr(minimum), os.path.relpath(readme), vstr(SPEC_BY_NAME_MIN)))
+    failures, n_rd, n_findby = check(render(chart), minimum)
     print("checked %d RestDefinitions, %d findby verb(s)" % (n_rd, n_findby))
     for f in failures:
         print("FAIL: " + f)
