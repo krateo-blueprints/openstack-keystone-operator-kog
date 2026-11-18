@@ -9,8 +9,21 @@
 # release-notes (the org reusable, which creates the release to write its body). With view-then-create,
 # release-tag can see "no release" and then lose the create to release-notes a moment later, and the
 # step dies on `HTTP 422 ... Release.tag_name already exists` -- with the chart already pushed and only
-# the CompositionDefinition asset missing. That is how glance-kog 0.1.2 failed; keystone-kog 0.4.2 won
-# the same race by luck.
+# the CompositionDefinition asset missing.
+#
+# MEASURED, with full repo names because the short ones are not findable by search:
+#   - krateo-blueprints/openstack-glance-operator-kog 0.1.2 LOST the race. Run 44261874508 attempt 1
+#     (2026-11-18T07:49:23Z) failed on the step "Publish the stamped CompositionDefinition on the
+#     release"; attempt 2, re-run once the release already existed, passed.
+#   - THIS repo's 0.4.0 won it with nothing to spare: release-tag 43591625384 and release-notes
+#     43591625255 both started at 2026-11-14T11:46:40Z -- the same second.
+#   - krateo-blueprints/openstack-keystone-operator-kog 0.4.2 is NOT an example either way, though an
+#     earlier version of this comment called it a lucky win. Its release-notes run 44232413718 skipped
+#     every step from "Checkout" through "Publish to the GitHub Release", so nothing ever contested the
+#     release and release-tag 44232413780 created it on attempt 1. There was no race to win.
+#     The porting lesson: in a repo where release-notes decides not to run, a green release-tag
+#     demonstrates NOTHING about this script. Check that both workflows actually fire on the same tag
+#     push there before concluding the fix is exercised.
 #
 # So the create is tried, and if it fails the release is LOOKED UP AGAIN: if it exists now, someone
 # else created it, which is all this step ever needed. ANY OTHER create failure (a 403, a 5xx, a
