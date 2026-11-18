@@ -154,6 +154,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/IdPEnvelope'
+        '404':
+          description: Not found (keystone exception.IdentityProviderNotFound, a NotFound) -- what the controller reads as "absent", so the PUT create runs
     delete:
       operationId: deleteIdentityProvider
       summary: Delete identity provider

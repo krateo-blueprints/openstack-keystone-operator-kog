@@ -137,6 +137,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ProtocolEnvelope'
+        '404':
+          description: Not found (keystone exception.FederatedProtocolNotFound, a NotFound) -- what the controller reads as "absent", so the PUT create runs
     delete:
       operationId: deleteProtocol
       summary: Delete protocol
