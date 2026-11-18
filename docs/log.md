@@ -12,6 +12,23 @@ timestamp: 2026-11-18T00:00:00Z
 Curated history; release notes live in GitHub Releases.
 
 
+## 2026-11-18 — findby gate: per-verb policy, both mapping lists, declared action-only kinds
+
+`hack/validate-findby-identifiers.py` now models three things it ignored. All three came from the
+ironic KOG, whose gate had already met each one:
+- `identifiersMatchPolicy` is read from the findby verb, and OR is the default. Under OR one matchable
+  identifier is enough; under AND every identifier must be matchable. A policy written at resource
+  level is refused, because it would silently fall back to OR.
+- An identifier must also exist in the CR spec oasgen-provider generates (the request body plus the
+  parameters no request mapping supplies). Request mappings are read from both `requestFieldMapping`
+  and `fieldMapping`, which oasgen-provider merges at load.
+- A kind whose findby must never match (the create is the action) can declare that with the
+  annotation `kog.openstack.krateo.io/findby-action-only: <reason>`. The exemption is accepted only on
+  a create-only kind whose findby really cannot match. An undeclared never-matching findby, or a stale
+  exemption, is refused.
+
+The self-test grew from 3 to 15 detector cases.
+
 ## 2026-11-18 — 0.4.2: IdentityRoleAssignment becomes Ready
 
 Measured on live data-plane run dp303 (GKE, blueprint 0.3.73, keystone-kog 0.4.1,
