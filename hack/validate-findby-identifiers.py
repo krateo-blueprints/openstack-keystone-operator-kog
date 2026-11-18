@@ -412,12 +412,14 @@ def check(docs, oasgen_min=SPEC_BY_NAME_MIN):
                     # ironic NodePower shape): BOTH the findby and the create are inert.
                     if "update" in actions:
                         print("WARNING  %s: findby AND create are inert %s -- the get %s is spec-buildable (%s) "
-                              "and declares no absence, so the kind works only through get + update" %
-                              (where, at, get["path"], how))
+                              "and has no absence signal (no notFoundBody or notFoundCodes, no %s; a 404 declared "
+                              "in the OAS does not count), so the kind works only through get + update" %
+                              (where, at, get["path"], how, GET_ABSENT_EVIDENCE))
                     else:
                         failures.append("%s: findby AND create are inert %s -- the get %s is spec-buildable (%s) "
-                                        "and declares no absence -- and there is no update verb, so nothing can "
-                                        "ever write" % (where, at, get["path"], how))
+                                        "and has no absence signal (no notFoundBody or notFoundCodes, no %s; a "
+                                        "404 declared in the OAS does not count) -- and there is no update verb, so "
+                                        "nothing can ever write" % (where, at, get["path"], how, GET_ABSENT_EVIDENCE))
                     continue
                 failures.append("%s: findby is UNREACHABLE %s because the get %s is spec-buildable (%s): "
                                 "IsResourceKnown is true from the first reconcile, so observe always uses the "
@@ -598,6 +600,14 @@ def self_test():
         ("inert shape with an update verb (a WARNING, not a failure)", _fixture(named, ["name"],
             verbs_extra=get_verb + [{"action": "update", "method": "PUT", "path": "/things/{id}"}],
             create_body=req_body, get_responses={"200": {"description": "ok"}}), False),
+        # The inert verdict uses the SAME absence rule as create-reach: a declared OAS 404 alone does not
+        # rescue it; an evidence annotation does (and the findby is then just unreachable).
+        ("inert shape, get declares an OAS 404 only (still inert, no update -> fail)", _fixture(named, ["name"],
+            verbs_extra=get_verb, create_body=req_body,
+            get_responses={"200": {"description": "ok"}, "404": {"description": "absent"}}), True),
+        ("inert shape with evidence: not inert, findby merely unreachable (fail)", _fixture(named, ["name"],
+            verbs_extra=get_verb, create_body=req_body, get_responses={"200": {"description": "ok"}},
+            annotations={GET_ABSENT_EVIDENCE: "vendor/api/things.py:42 at 1.0 raises NotFound (404)"}), True),
     ]
     for label, docs, want_fail in cases:
         with contextlib.redirect_stdout(io.StringIO()):

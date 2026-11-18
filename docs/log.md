@@ -28,7 +28,9 @@ keypair GET 404s, yet neither declares a 404. So the create-reachability report:
 The five keystone candidates (role assignment, group role assignment, identity provider, mapping,
 protocol) now carry the evidence: Keystone source file:line, plus the live measurement for the role
 assignment. The OAS 404s stay as documentation. A summary line always reports what was checked, even
-for a chart with no findby at all.
+for a chart with no findby at all. The inert findby + get + create verdict uses the same
+rule. A declared OAS 404 alone leaves that shape inert, while an evidence annotation makes it a plain
+unreachable findby.
 
 ## 2026-11-18 — findby gate: the oasgen version it assumes; the inert findby+create shape
 
