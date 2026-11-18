@@ -16,3 +16,7 @@ clouds.yaml
 .env.local
 *.kubeconfig
 *openrc*.sh
+
+# Python bytecode (a local run of hack/*.py writes it; never commit it)
+__pycache__/
+*.pyc

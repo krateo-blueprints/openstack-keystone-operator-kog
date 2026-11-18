@@ -32,6 +32,22 @@ WHAT IT CHECKS, for every rendered RestDefinition that declares a findby verb:
      A policy written at resource level is refused: it is not a field there, so it would silently
      fall back to OR.
 
+REACHABILITY. rest-dynamic-controller fills a call's path parameters FROM SPEC FIELDS BY NAME before it
+applies any request mapping (0.80.0 internal/tools/client/builder/builder.go BuildCallConfig: step 3
+processFields(spec) at L179, step 5 the mappings at L192-193; a mapping whose source is absent is
+skipped, L242-244). IsResourceKnown then asks whether that get call is complete (builder.go
+IsResourceKnown). So when every path parameter of the get is satisfied by a REQUIRED spec field --
+by name, or by a request mapping from a required spec field or a resolver -- the get is used from the
+first reconcile:
+  4. A findby on such a kind can never run. That is refused as "unreachable because the get is
+     spec-buildable". It is not an identifier problem, and a fieldMapping would not repair it.
+  5. The create then runs only when that get reports absent. That is fine when the get declares a
+     discriminator between "not yet created" and "created": a notFoundBody, or a 404 response in the
+     OAS. The create's path does not settle it; nova's quota GET answers 200 for any tenant. Otherwise
+     it is printed as a WARNING (not a failure): the create may be unreachable, and with an update verb
+     the kind works only through get + update. Every create-bearing kind with a spec-buildable get is
+     printed with the reason it is fine or not.
+
 ACTION-ONLY KINDS. For some kinds a findby that never matches is the design: the create IS the
 action, and a matching findby would turn every later request into a silent no-op (the ironic KOG
 measured exactly that on NodeProvision). Such a kind must DECLARE it, with a reason, as an
@@ -169,7 +185,7 @@ def generated_spec(doc, verbs):
                 continue
             if m.get("resolver") or (m.get("inCustomResource") and m["inCustomResource"] != "spec." + name):
                 supplied.add(name)
-    props = {}
+    props, required = {}, set()
     by_action = {v.get("action"): v for v in verbs}
     for action in ("create", "dispatch", "update"):
         if action in by_action:
@@ -179,7 +195,9 @@ def generated_spec(doc, verbs):
                 break
             body = deref(doc, op.get("requestBody", {}) or {}).get("content", {}).get("application/json", {})
             if body.get("schema"):
-                props.update(deref(doc, body["schema"]).get("properties", {}) or {})
+                base = deref(doc, body["schema"])
+                props.update(base.get("properties", {}) or {})
+                required.update(base.get("required", []) or [])
             break
     for v in verbs:
         try:
@@ -192,7 +210,85 @@ def generated_spec(doc, verbs):
             if not name or name.lower() == "authorization" or name in supplied:
                 continue
             props.setdefault(name, p.get("schema", {"type": "string"}))
-    return {"type": "object", "properties": props}
+            if p.get("required"):
+                required.add(name)
+    return {"type": "object", "properties": props, "required": sorted(required)}
+
+
+def required_path(doc, schema, dotted):
+    """True when every segment of dotted is a declared AND required property at its level."""
+    cur = deref(doc, schema)
+    for seg in dotted.split("."):
+        if seg not in (cur.get("properties", {}) or {}) or seg not in (cur.get("required", []) or []):
+            return False
+        cur = deref(doc, cur["properties"][seg])
+    return True
+
+
+def path_params(path):
+    import re
+    return re.findall(r"{([^}]+)}", path)
+
+
+def get_reachability(doc, verbs, spec):
+    """(spec_buildable, how) for the kind's get verb: whether every path parameter is satisfied by a
+    required spec field (by name: step 3), or by a request mapping from one, or by a resolver."""
+    get = next((v for v in verbs if v.get("action") == "get"), None)
+    if get is None:
+        return False, "no get verb"
+    try:
+        operation(doc, get)
+    except ValueError as e:
+        return False, "the get is not in the OAS (%s), so the controller cannot validate it" % e
+    how = []
+    for name in path_params(get["path"]):
+        if required_path(doc, spec, name):
+            how.append("%s=spec.%s" % (name, name))
+            continue
+        hit = None
+        for m in request_mappings(get):
+            if m.get("inPath") != name:
+                continue
+            if m.get("resolver"):
+                hit = "%s=resolver" % name
+            elif (m.get("inCustomResource") or "").startswith("spec.") and \
+                    required_path(doc, spec, m["inCustomResource"][len("spec."):]):
+                hit = "%s=%s" % (name, m["inCustomResource"])
+        if not hit:
+            return False, "path parameter %s is not supplied by a required spec field" % name
+        how.append(hit)
+    return True, ", ".join(how) or "no path parameters"
+
+
+def create_reach(doc, verbs, spec):
+    """None when the precondition does not apply (no create, or a get that is not spec-buildable);
+    otherwise (fine, text). Printed as information or a WARNING, never a failure."""
+    buildable, how = get_reachability(doc, verbs, spec)
+    create = next((v for v in verbs if v.get("action") == "create"), None)
+    get = next((v for v in verbs if v.get("action") == "get"), None)
+    if not buildable or create is None:
+        return None
+    # The create's own path does NOT settle it: nova's GET /os-quota-sets/{tenant_id} answers 200 with
+    # defaults for any tenant, so a PUT-on-own-path create there is unreachable too. Only a declared
+    # discriminator counts.
+    try:
+        _, gop = operation(doc, get)
+        codes = {str(c) for c in (gop.get("responses", {}) or {})}
+    except ValueError:
+        codes = set()
+    if get.get("notFoundBody"):
+        fine, verdict = True, "fine: the get declares a notFoundBody that reports absence"
+    elif "404" in codes:
+        fine, verdict = True, "fine: the get declares a 404 response (absent until created)"
+    elif any(v.get("action") == "update" for v in verbs):
+        fine, verdict = False, ("WARNING: nothing declares that the get reports absence, so the create may "
+                                "never run and the kind works only through get + update; if that is intended, "
+                                "say so in the definition, otherwise declare the get's 404 or a notFoundBody")
+    else:
+        fine, verdict = False, ("WARNING: the create may be unreachable -- nothing declares that the get "
+                                "reports absence before the create; declare the get's 404 or a notFoundBody")
+    return fine, "get %s is spec-buildable (%s); create %s %s -> %s" % (
+        get["path"], how, create["method"], create["path"], verdict)
 
 
 def check(docs):
@@ -211,18 +307,29 @@ def check(docs):
             failures.append("%s: identifiersMatchPolicy is declared at resource level, where it is not a field; it "
                             "belongs on the findby verb (verbsDescription[].identifiersMatchPolicy), and without "
                             "it the policy silently defaults to OR" % name)
-        if not finders:
-            if exemption:
-                failures.append("%s: declares %s but has no findby verb -- remove the stale exemption" % (name, ACTION_ONLY))
-            continue
         _, _, rest = rd["spec"]["oasPath"].partition("configmap://")
         _, cm_name, key = rest.split("/", 2)
         doc = yaml.safe_load(configmaps[cm_name]["data"][key])
         spec = generated_spec(doc, verbs)
         actions = {v.get("action") for v in verbs}
+        buildable, how = get_reachability(doc, verbs, spec)
+        get = next((v for v in verbs if v.get("action") == "get"), None)
+        reach = create_reach(doc, verbs, spec)
+        if reach:
+            print("create-reach  %s  %s" % (name, reach[1]))
+        if not finders:
+            if exemption:
+                failures.append("%s: declares %s but has no findby verb -- remove the stale exemption" % (name, ACTION_ONLY))
+            continue
         for verb in finders:
             findbys += 1
             where = "%s findby %s %s" % (name, verb["method"], verb["path"])
+            if buildable:
+                failures.append("%s: findby is UNREACHABLE because the get %s is spec-buildable (%s): "
+                                "IsResourceKnown is true from the first reconcile, so observe always uses the "
+                                "get. This is not an identifier problem; remove the findby, or source a get path "
+                                "parameter from status" % (where, get["path"], how))
+                continue
             try:
                 item = list_item(doc, response_schema(doc, verb), verb.get("itemsPath", ""))
             except (ValueError, KeyError) as e:
@@ -334,6 +441,13 @@ def self_test():
     get_verb = [{"action": "get", "method": "GET", "path": "/things/{id}"}]
     query_only_body = {"type": "object", "properties": {"other": s}}
     reason = {ACTION_ONLY: "the create is the action; matching would make later requests silent no-ops"}
+    req_body = {"type": "object", "required": ["id", "name"], "properties": {"id": s, "name": s}}
+    name_body = {"type": "object", "required": ["name"], "properties": {"name": s}}
+    req_body_label = {"type": "object", "required": ["label", "name"], "properties": {"label": s, "name": s}}
+    status_get = [{"action": "get", "method": "GET", "path": "/things/{id}",
+                   "requestFieldMapping": [{"inPath": "id", "inCustomResource": "status.id"}]}]
+    mapped_get = [{"action": "get", "method": "GET", "path": "/things/{id}",
+                   "fieldMapping": [{"inPath": "id", "inCustomResource": "spec.label"}]}]
     cases = [
         ("nested item, flat identifiers (dp303)", _fixture(nested, flat_ids, {"identifiersMatchPolicy": "AND"}), True),
         ("nested item, mapped identifiers", _fixture(nested, flat_ids, {"identifiersMatchPolicy": "AND",
@@ -363,6 +477,17 @@ def self_test():
                                                                  annotations=reason), True),
         ("declared action-only but the findby matches", _fixture(named, ["name"], annotations=reason), True),
         ("declared action-only with an empty reason", _fixture(named, ["node_id"], annotations={ACTION_ONLY: " "}), True),
+        # Reachability: the get's path parameter filled from a REQUIRED spec field makes the findby dead.
+        ("findby with a spec-buildable get (id is a required spec field)", _fixture(named, ["name"], verbs_extra=get_verb,
+            create_body=req_body), True),
+        ("findby with a get addressed from status (control)", _fixture(named, ["name"], verbs_extra=status_get,
+            create_body=name_body), False),
+        # Step 3 runs BEFORE the mappings: a status-sourced mapping does not help when the spec has the
+        # parameter's name as a required field (the ironic KOG pinned this at oasgen 0.59.0+).
+        ("status-sourced mapping, but spec has the param name required", _fixture(named, ["name"],
+            verbs_extra=status_get, create_body=req_body), True),
+        ("findby with a get whose path param maps from a required spec field", _fixture(named, ["name"],
+            verbs_extra=mapped_get, create_body=req_body_label), True),
     ]
     for label, docs, want_fail in cases:
         with contextlib.redirect_stdout(io.StringIO()):
@@ -371,7 +496,37 @@ def self_test():
             raise SystemExit("FAIL: self-test %r: expected %s, got %s -- the detector is broken, so a pass "
                              "would mean nothing" % (label, "a failure" if want_fail else "a pass",
                                                      failures or "a pass"))
-    print("self-test: %d detector cases behave" % len(cases))
+    # create-reach verdicts (information/WARNING, never a failure).
+    def reach(verbs_extra, get_responses=None, create_path="/things"):
+        docs = _fixture(named, ["name"], verbs_extra=verbs_extra, create_body=req_body)
+        oas = yaml.safe_load(docs[0]["data"]["oas.yaml"])
+        if get_responses is not None:
+            oas["paths"]["/things/{id}"]["get"]["responses"] = get_responses
+        rd = docs[1]["spec"]["resource"]
+        rd["verbsDescription"] = [v for v in rd["verbsDescription"] if v["action"] != "findby"]
+        for v in rd["verbsDescription"]:
+            if v["action"] == "create":
+                v["path"] = create_path
+        return create_reach(oas, rd["verbsDescription"], generated_spec(oas, rd["verbsDescription"]))
+    ok200 = {"200": {"description": "ok"}}
+    reach_cases = [
+        ("spec-buildable get, create elsewhere, nothing discriminates", reach(get_verb, ok200), False),
+        ("same, get declares a 404", reach(get_verb, dict(ok200, **{"404": {"description": "absent"}})), True),
+        ("same, get has a notFoundBody", reach([dict(get_verb[0], notFoundBody={"inline": ".x == null"})], ok200), True),
+        ("create on the get's own path, nothing declared (nova quota shape)", reach(get_verb, ok200,
+                                                                                      create_path="/things/{id}"), False),
+    ]
+    for label, got, want_fine in reach_cases:
+        if got is None or got[0] != want_fine:
+            raise SystemExit("FAIL: self-test create-reach %r: expected %s, got %r" %
+                             (label, "fine" if want_fine else "a WARNING", got))
+    def reach_status():
+        docs = _fixture(named, ["name"], verbs_extra=status_get, create_body=name_body)
+        oas = yaml.safe_load(docs[0]["data"]["oas.yaml"]); v = docs[1]["spec"]["resource"]["verbsDescription"]
+        return create_reach(oas, v, generated_spec(oas, v))
+    if reach_status() is not None:
+        raise SystemExit("FAIL: self-test create-reach: a get addressed from status must not meet the precondition")
+    print("self-test: %d detector cases and %d create-reach cases behave" % (len(cases), len(reach_cases) + 1))
 
 
 def main():

@@ -132,6 +132,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/MappingEnvelope'
+        '404':
+          description: Not found (keystone exception.MappingNotFound, a NotFound) -- what the controller reads as "absent", so the PUT create runs
     delete:
       operationId: deleteMapping
       summary: Delete mapping

@@ -12,6 +12,25 @@ timestamp: 2026-11-18T00:00:00Z
 Curated history; release notes live in GitHub Releases.
 
 
+## 2026-11-18 — findby gate: reachability (an unreachable findby, a create that may not run)
+
+rest-dynamic-controller fills a call's path parameters from spec fields by name before it applies any
+request mapping (0.80.0 `builder.go` `BuildCallConfig`: spec at L179, mappings at L192-193). So a get
+whose path parameters all come from required spec fields is used from the first reconcile. The ironic
+KOG pinned this behaviour at oasgen 0.59.0 and later. Two new checks in
+`hack/validate-findby-identifiers.py` follow from it:
+- **A findby on such a kind is refused as unreachable.** It is reported as a reachability problem,
+  not an identifier problem.
+- **Its create runs only when that get reports absence.** The gate prints every such kind. It is fine
+  when the get declares a discriminator, a `notFoundBody` or a 404 response; otherwise it prints a
+  WARNING, not a failure. The create's path does not settle it: nova's quota GET answers 200 for any
+  project.
+
+The Keystone federation GETs (identity provider, mapping, protocol) now declare the 404 Keystone
+returns when the object is absent (`exception.*NotFound`). All five keystone kinds that meet the
+precondition print "fine". Also removed: two `hack/__pycache__/*.pyc` files committed by mistake (one
+in #25), and `__pycache__/` is now ignored.
+
 ## 2026-11-18 — findby gate: per-verb policy, both mapping lists, declared action-only kinds
 
 `hack/validate-findby-identifiers.py` now models three things it ignored. All three came from the
